@@ -14,7 +14,7 @@ from models.simple_models import MeanPool, BiLSTM
 from models.transformer_models import TinyTransformer, TransformerBase
 
 
-def build_model(args, vocab_size, num_classes, pad_id):
+def build_model(args, vocab_size, num_classes):
     name = args.model.lower()
 
     if name == "tmr":
