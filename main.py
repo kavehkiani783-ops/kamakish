@@ -1,4 +1,3 @@
-```python
 import argparse
 import os
 import json
@@ -15,7 +14,12 @@ from models.simple_models import MeanPool, BiLSTM
 from models.transformer_models import TinyTransformer, TransformerBase
 
 
-def build_model(args, vocab_size, num_classes, pad_id):
+def build_model(args, vocab_size, num_classes):
+    """
+    NOTE:
+    We intentionally do NOT pass pad_id here to avoid signature mismatches across environments.
+    If any model requires pad_id later, we can update that model's __init__ to accept pad_id=None.
+    """
     name = args.model.lower()
 
     if name == "tmr":
@@ -27,7 +31,6 @@ def build_model(args, vocab_size, num_classes, pad_id):
             d_model=args.d_model,
             vocab_size=vocab_size,
             num_classes=num_classes,
-            pad_id=pad_id,
             num_slots=args.tmr_slots,
             num_steps=0 if args.tmr_no_settle else args.tmr_steps,
             decay=args.tmr_decay,
@@ -37,17 +40,16 @@ def build_model(args, vocab_size, num_classes, pad_id):
         return TMRModel(vocab_size, num_classes, cfg)
 
     if name == "meanpool":
-        # MeanPool does masking using attention_mask in forward, so no pad_id needed here
         return MeanPool(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes)
 
     if name == "bilstm":
-        return BiLSTM(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes, pad_id=pad_id)
+        return BiLSTM(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes)
 
     if name == "tiny_transformer":
-        return TinyTransformer(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes, pad_id=pad_id)
+        return TinyTransformer(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes)
 
     if name == "transformer_base":
-        return TransformerBase(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes, pad_id=pad_id)
+        return TransformerBase(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes)
 
     raise ValueError(f"Unknown model: {args.model}")
 
@@ -108,7 +110,6 @@ def main():
         args=args,
         vocab_size=meta["vocab_size"],
         num_classes=meta["num_classes"],
-        pad_id=meta["pad_id"],
     ).to(device)
 
     results = train_and_evaluate(
@@ -134,4 +135,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
