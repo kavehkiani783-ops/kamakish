@@ -1,3 +1,4 @@
+```python
 import argparse
 import os
 import json
@@ -14,7 +15,7 @@ from models.simple_models import MeanPool, BiLSTM
 from models.transformer_models import TinyTransformer, TransformerBase
 
 
-def build_model(args, vocab_size, num_classes):
+def build_model(args, vocab_size, num_classes, pad_id):
     name = args.model.lower()
 
     if name == "tmr":
@@ -36,6 +37,7 @@ def build_model(args, vocab_size, num_classes):
         return TMRModel(vocab_size, num_classes, cfg)
 
     if name == "meanpool":
+        # MeanPool does masking using attention_mask in forward, so no pad_id needed here
         return MeanPool(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes)
 
     if name == "bilstm":
@@ -76,7 +78,7 @@ def main():
     parser.add_argument("--tmr_slots", type=int, default=64)
     parser.add_argument("--tmr_decay", type=float, default=0.9)
     parser.add_argument("--tmr_gate", action="store_true")
-    parser.add_argument("--tmr_topk", type=int, default=0)     # 0 => softmax
+    parser.add_argument("--tmr_topk", type=int, default=0)  # 0 => softmax
     parser.add_argument("--tmr_no_settle", action="store_true")
 
     args = parser.parse_args()
@@ -132,3 +134,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
