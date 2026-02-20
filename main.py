@@ -36,7 +36,7 @@ def build_model(args, vocab_size, num_classes, pad_id):
         return TMRModel(vocab_size, num_classes, cfg)
 
     if name == "meanpool":
-        return MeanPool(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes, pad_id=pad_id)
+        return MeanPool(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes)
 
     if name == "bilstm":
         return BiLSTM(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes, pad_id=pad_id)
