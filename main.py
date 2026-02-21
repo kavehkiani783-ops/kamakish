@@ -2,6 +2,7 @@ import argparse
 import os
 import json
 from datetime import datetime
+import inspect
 
 import torch
 
@@ -14,14 +15,20 @@ from models.simple_models import MeanPool, BiLSTM
 from models.transformer_models import TinyTransformer, TransformerBase
 
 
+def _construct(cls, **kwargs):
+    """
+    Construct a model class safely:
+    - Only passes kwargs that are accepted by the class __init__ signature.
+    This makes main.py resilient even if some models do NOT accept pad_id.
+    """
+    sig = inspect.signature(cls.__init__)
+    allowed = set(sig.parameters.keys())
+    allowed.discard("self")
+    filtered = {k: v for k, v in kwargs.items() if k in allowed}
+    return cls(**filtered)
+
+
 def build_model(args, vocab_size, num_classes, pad_id):
-    """
-    IMPORTANT CONTRACT:
-    - main.py always passes pad_id to every model constructor.
-    - Therefore ALL model classes (MeanPool, BiLSTM, TinyTransformer, TransformerBase)
-      must accept pad_id=None in __init__ (even if unused).
-    - TMRConfig requires pad_id.
-    """
     name = args.model.lower()
 
     if name == "tmr":
@@ -29,6 +36,7 @@ def build_model(args, vocab_size, num_classes, pad_id):
         if topk < 0:
             raise ValueError("--tmr_topk must be >= 0 (0 means softmax).")
 
+        # TMRConfig requires pad_id in your codebase
         cfg = TMRConfig(
             d_model=args.d_model,
             vocab_size=vocab_size,
@@ -42,17 +50,24 @@ def build_model(args, vocab_size, num_classes, pad_id):
         )
         return TMRModel(vocab_size, num_classes, cfg)
 
+    common_kwargs = dict(
+        vocab_size=vocab_size,
+        d_model=args.d_model,
+        num_classes=num_classes,
+        pad_id=pad_id,  # will be passed only if model accepts it
+    )
+
     if name == "meanpool":
-        return MeanPool(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes, pad_id=pad_id)
+        return _construct(MeanPool, **common_kwargs)
 
     if name == "bilstm":
-        return BiLSTM(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes, pad_id=pad_id)
+        return _construct(BiLSTM, **common_kwargs)
 
     if name == "tiny_transformer":
-        return TinyTransformer(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes, pad_id=pad_id)
+        return _construct(TinyTransformer, **common_kwargs)
 
     if name == "transformer_base":
-        return TransformerBase(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes, pad_id=pad_id)
+        return _construct(TransformerBase, **common_kwargs)
 
     raise ValueError(f"Unknown model: {args.model}")
 
@@ -113,7 +128,7 @@ def main():
         args=args,
         vocab_size=meta["vocab_size"],
         num_classes=meta["num_classes"],
-        pad_id=meta["pad_id"],
+        pad_id=meta.get("pad_id", None),
     ).to(device)
 
     results = train_and_evaluate(
