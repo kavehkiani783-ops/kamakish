@@ -15,6 +15,13 @@ from models.transformer_models import TinyTransformer, TransformerBase
 
 
 def build_model(args, vocab_size, num_classes, pad_id):
+    """
+    IMPORTANT CONTRACT:
+    - main.py always passes pad_id to every model constructor.
+    - Therefore ALL model classes (MeanPool, BiLSTM, TinyTransformer, TransformerBase)
+      must accept pad_id=None in __init__ (even if unused).
+    - TMRConfig requires pad_id.
+    """
     name = args.model.lower()
 
     if name == "tmr":
@@ -26,7 +33,7 @@ def build_model(args, vocab_size, num_classes, pad_id):
             d_model=args.d_model,
             vocab_size=vocab_size,
             num_classes=num_classes,
-            pad_id=pad_id,  # REQUIRED by your TMRConfig
+            pad_id=pad_id,
             num_slots=args.tmr_slots,
             num_steps=0 if args.tmr_no_settle else args.tmr_steps,
             decay=args.tmr_decay,
@@ -36,7 +43,6 @@ def build_model(args, vocab_size, num_classes, pad_id):
         return TMRModel(vocab_size, num_classes, cfg)
 
     if name == "meanpool":
-        # Make MeanPool accept pad_id=None in its __init__ (see patch below)
         return MeanPool(vocab_size=vocab_size, d_model=args.d_model, num_classes=num_classes, pad_id=pad_id)
 
     if name == "bilstm":
