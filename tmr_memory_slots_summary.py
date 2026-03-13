@@ -7,7 +7,7 @@ BASE_OUTPUT_DIR = "ablation_runs/memory_slots_ablation"
 all_rows = []
 
 # -------------------------------------------------------
-# Scan all run folders
+# Scan run folders
 # -------------------------------------------------------
 
 for run_dir in os.listdir(BASE_OUTPUT_DIR):
@@ -27,12 +27,28 @@ for run_dir in os.listdir(BASE_OUTPUT_DIR):
     with open(json_file, "r") as f:
         results = json.load(f)
 
-    # Parse dataset / slots / seed from folder name
+    # -------------------------------------------------------
+    # Parse folder name safely
+    # Example:
+    # listops_synth_slots256_seed999
+    # imdb_slots64_seed42
+    # -------------------------------------------------------
+
     parts = run_dir.split("_")
 
-    dataset = parts[0]
-    slots = int(parts[1].replace("slots", ""))
-    seed = int(parts[2].replace("seed", ""))
+    dataset_parts = []
+    slots = None
+    seed = None
+
+    for p in parts:
+        if p.startswith("slots"):
+            slots = int(p.replace("slots", ""))
+        elif p.startswith("seed"):
+            seed = int(p.replace("seed", ""))
+        else:
+            dataset_parts.append(p)
+
+    dataset = "_".join(dataset_parts)
 
     row = {
         "dataset": dataset,
@@ -58,7 +74,7 @@ print("\nSaved full run table:")
 print(all_runs_path)
 
 # -------------------------------------------------------
-# Summary
+# Summary table
 # -------------------------------------------------------
 
 summary_df = (
