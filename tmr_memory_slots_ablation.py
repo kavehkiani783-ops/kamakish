@@ -15,7 +15,6 @@ MEM_SLOTS = [16, 32, 64, 128, 256]
 TMR_STEPS = 4
 
 BASE_OUTPUT_DIR = "ablation_runs/memory_slots_ablation"
-
 os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 
 # -------------------------------------------------------
@@ -32,13 +31,16 @@ for dataset, slots, seed in itertools.product(DATASETS, MEM_SLOTS, SEEDS):
     print(f"Running dataset={dataset} | mem_slots={slots} | seed={seed}")
     print("------------------------------------------------------------")
 
-    # unique folder per run so files never overwrite
     run_output_dir = os.path.join(
         BASE_OUTPUT_DIR,
         f"{dataset}_slots{slots}_seed{seed}"
     )
 
     os.makedirs(run_output_dir, exist_ok=True)
+
+    # -------------------------------------------------------
+    # Run experiment
+    # -------------------------------------------------------
 
     if dataset == "imdb":
         cmd = [
@@ -71,14 +73,21 @@ for dataset, slots, seed in itertools.product(DATASETS, MEM_SLOTS, SEEDS):
     subprocess.run(cmd, check=True)
 
     # -------------------------------------------------------
-    # Read JSON result produced by main.py
+    # Locate JSON result file automatically
     # -------------------------------------------------------
 
-    json_file = os.path.join(run_output_dir, f"tmr_{dataset}_{seed}.json")
+    json_files = [
+        f for f in os.listdir(run_output_dir)
+        if f.endswith(".json")
+    ]
 
-    if not os.path.exists(json_file):
-        print(f"WARNING: Missing result file {json_file}")
+    if len(json_files) == 0:
+        print(f"WARNING: No JSON result found in {run_output_dir}")
         continue
+
+    json_file = os.path.join(run_output_dir, json_files[0])
+
+    print(f"Loading results from: {json_file}")
 
     with open(json_file, "r") as f:
         results = json.load(f)
@@ -99,17 +108,20 @@ for dataset, slots, seed in itertools.product(DATASETS, MEM_SLOTS, SEEDS):
 # Create full raw results table
 # -------------------------------------------------------
 
+if len(all_rows) == 0:
+    print("\nNo runs were collected. Something is wrong with result files.")
+    exit()
+
 all_runs_df = pd.DataFrame(all_rows)
 
 all_runs_path = os.path.join(BASE_OUTPUT_DIR, "memory_slots_all_runs.csv")
-
 all_runs_df.to_csv(all_runs_path, index=False)
 
 print("\nSaved full run table:")
 print(all_runs_path)
 
 # -------------------------------------------------------
-# Create summary table (mean/std across seeds)
+# Create summary table
 # -------------------------------------------------------
 
 summary_df = (
@@ -126,14 +138,13 @@ summary_df = (
 )
 
 summary_path = os.path.join(BASE_OUTPUT_DIR, "memory_slots_summary.csv")
-
 summary_df.to_csv(summary_path, index=False)
 
 print("\nSaved summary table:")
 print(summary_path)
 
 # -------------------------------------------------------
-# Print summary table nicely
+# Print summary nicely
 # -------------------------------------------------------
 
 for dataset in summary_df["dataset"].unique():
@@ -146,4 +157,4 @@ for dataset in summary_df["dataset"].unique():
         .to_string(index=False)
     )
 
-print("\nAblation finished successfully.")
+print("\nMemory slots ablation finished successfully.")
