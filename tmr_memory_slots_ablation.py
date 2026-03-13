@@ -27,8 +27,8 @@ for dataset, slots, seed in itertools.product(datasets, mem_slots, seeds):
             "--epochs", "3",
             "--val_ratio", "0.1",
             "--seed", str(seed),
-            "--mem_slots", str(slots),
-            "--steps", str(steps),
+            "--tmr_slots", str(slots),
+            "--tmr_steps", str(steps),
             "--output_dir", output_dir
         ]
 
@@ -42,8 +42,8 @@ for dataset, slots, seed in itertools.product(datasets, mem_slots, seeds):
             "--batch_size", "64",
             "--max_len", "512",
             "--seed", str(seed),
-            "--mem_slots", str(slots),
-            "--steps", str(steps),
+            "--tmr_slots", str(slots),
+            "--tmr_steps", str(steps),
             "--output_dir", output_dir
         ]
 
