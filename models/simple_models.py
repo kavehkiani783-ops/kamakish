@@ -16,6 +16,7 @@ class MeanPool(nn.Module):
         vocab_size: int = 30522,
         max_len: int = 512,
         dropout: float = 0.1,
+        pad_id: int = 0,
     ):
         super().__init__()
         self.d_model = d_model
@@ -67,6 +68,7 @@ class BiLSTM(nn.Module):
         hidden_size: int = None,
         num_layers: int = 1,
         dropout: float = 0.1,
+        pad_id: int = 0,
     ):
         super().__init__()
         self.d_model = d_model
