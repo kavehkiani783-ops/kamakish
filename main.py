@@ -15,6 +15,7 @@ from models.transformer_models import TinyTransformer, TransformerBase
 
 print("MAIN STARTED")
 
+
 def build_model(args, vocab_size, num_classes, pad_id):
     name = args.model.lower()
 
@@ -65,6 +66,27 @@ def build_model(args, vocab_size, num_classes, pad_id):
         )
 
     raise ValueError(f"Unknown model: {args.model}")
+
+
+def build_output_filename(args):
+    """
+    Create a unique result filename so ablation runs do not overwrite each other.
+    """
+    parts = [args.model, args.dataset]
+
+    if args.model.lower() == "tmr":
+        parts.extend([
+            f"slots{args.tmr_slots}",
+            f"steps{0 if args.tmr_no_settle else args.tmr_steps}",
+            f"decay{args.tmr_decay}",
+            f"gate{int(args.tmr_gate)}",
+            f"topk{args.tmr_topk}",
+            f"dropout{args.tmr_dropout}",
+            f"clip{args.tmr_score_clip}",
+        ])
+
+    parts.append(f"seed{args.seed}")
+    return "_".join(str(p) for p in parts) + ".json"
 
 
 def main():
@@ -140,7 +162,9 @@ def main():
     )
 
     os.makedirs(args.output_dir, exist_ok=True)
-    out_path = os.path.join(args.output_dir, f"{args.model}_{args.dataset}_{args.seed}.json")
+    out_filename = build_output_filename(args)
+    out_path = os.path.join(args.output_dir, out_filename)
+
     with open(out_path, "w") as f:
         json.dump(results, f, indent=2)
 
