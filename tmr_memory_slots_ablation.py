@@ -1,11 +1,16 @@
 import subprocess
 import itertools
+import os
 
 datasets = ["imdb", "listops_synth"]
 seeds = [42, 123, 999]
 mem_slots = [16, 32, 64, 128, 256]
 
 steps = 4
+
+# Create dedicated output folder for this experiment
+output_dir = "ablation_runs/memory_slots_ablation"
+os.makedirs(output_dir, exist_ok=True)
 
 for dataset, slots, seed in itertools.product(datasets, mem_slots, seeds):
 
@@ -24,9 +29,10 @@ for dataset, slots, seed in itertools.product(datasets, mem_slots, seeds):
             "--seed", str(seed),
             "--mem_slots", str(slots),
             "--steps", str(steps),
+            "--output_dir", output_dir
         ]
 
-    elif dataset == "listops_synth":
+    else:
         cmd = [
             "python",
             "main.py",
@@ -38,6 +44,7 @@ for dataset, slots, seed in itertools.product(datasets, mem_slots, seeds):
             "--seed", str(seed),
             "--mem_slots", str(slots),
             "--steps", str(steps),
+            "--output_dir", output_dir
         ]
 
     subprocess.run(cmd, check=True)
