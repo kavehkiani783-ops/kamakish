@@ -95,6 +95,7 @@ class TinyTransformer(_BaseTransformerClassifier):
         dropout: float = 0.1,
         vocab_size: int = 30522,
         max_len: int = 512,
+        pad_id: int = 0,
     ):
         # small encoder: 2 layers, 4 heads
         super().__init__(
