@@ -19,6 +19,7 @@ class _BaseTransformerClassifier(nn.Module):
         dropout: float = 0.1,
         vocab_size: int = 30522,
         max_len: int = 512,
+        pad_id: int = 0,
     ):
         super().__init__()
         self.d_model = d_model
