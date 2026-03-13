@@ -121,6 +121,7 @@ class TransformerBase(_BaseTransformerClassifier):
         dropout: float = 0.1,
         vocab_size: int = 30522,
         max_len: int = 512,
+        pad_id: int = 0,
     ):
         # stronger: 4 layers, 8 heads (if d_model supports it)
         nhead = 8 if d_model % 8 == 0 else 4
