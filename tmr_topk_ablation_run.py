@@ -16,11 +16,11 @@ TMR_SLOTS = 16
 BASE_OUTPUT_DIR = "ablation_runs/topk_ablation"
 os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 
+print("\nStarting TMR top-k binding ablation runs\n")
+
 # -------------------------------------------------------
 # Run experiments
 # -------------------------------------------------------
-
-print("\nStarting TMR top-k binding ablation runs\n")
 
 for dataset, topk, seed in itertools.product(DATASETS, TOPK_VALUES, SEEDS):
 
@@ -32,15 +32,17 @@ for dataset, topk, seed in itertools.product(DATASETS, TOPK_VALUES, SEEDS):
         BASE_OUTPUT_DIR,
         f"{dataset}_topk{topk}_seed{seed}"
     )
+
     os.makedirs(run_output_dir, exist_ok=True)
 
-    # Skip run if JSON already exists
-    existing_jsons = [f for f in os.listdir(run_output_dir) if f.endswith(".json")]
-    if len(existing_jsons) > 0:
-        print(f"Skipping existing run: {run_output_dir}")
+    # Skip if result already exists
+    existing_json = [f for f in os.listdir(run_output_dir) if f.endswith(".json")]
+    if len(existing_json) > 0:
+        print("Run already exists, skipping.")
         continue
 
     if dataset == "imdb":
+
         cmd = [
             "python",
             "main.py",
@@ -51,10 +53,12 @@ for dataset, topk, seed in itertools.product(DATASETS, TOPK_VALUES, SEEDS):
             "--seed", str(seed),
             "--tmr_slots", str(TMR_SLOTS),
             "--tmr_steps", str(TMR_STEPS),
-            "--topk", str(topk),
+            "--tmr_topk", str(topk),
             "--output_dir", run_output_dir
         ]
+
     else:
+
         cmd = [
             "python",
             "main.py",
@@ -66,7 +70,7 @@ for dataset, topk, seed in itertools.product(DATASETS, TOPK_VALUES, SEEDS):
             "--seed", str(seed),
             "--tmr_slots", str(TMR_SLOTS),
             "--tmr_steps", str(TMR_STEPS),
-            "--topk", str(topk),
+            "--tmr_topk", str(topk),
             "--output_dir", run_output_dir
         ]
 
