@@ -2,6 +2,7 @@
 
 import argparse
 import csv
+import json
 import re
 import subprocess
 import sys
@@ -10,22 +11,14 @@ from pathlib import Path
 from typing import Dict, List, Any
 
 
-# ------------------------------------------------------------
-# Ablation axes aligned with your real TMRConfig
-# ------------------------------------------------------------
-
 ABLATION_AXES: Dict[str, List[Any]] = {
     "steps": [0, 1, 2, 4, 8],
     "mem_slots": [32, 64, 128, 256],
     "decay": [0.7, 0.85, 0.95],
     "gate": [False, True],
-    "topk": [0, 1, 2, 4],   # 0 = softmax, >0 = top-k
+    "topk": [0, 1, 2, 4],   # 0 = softmax, >0 = sparse top-k
 }
 
-
-# ------------------------------------------------------------
-# Default TMR config used as the baseline for sweeps
-# ------------------------------------------------------------
 
 def make_base_tmr() -> Dict[str, Any]:
     return {
@@ -37,10 +30,17 @@ def make_base_tmr() -> Dict[str, Any]:
     }
 
 
-# ------------------------------------------------------------
-# Build one command to call main.py
-# Change argument names here only if your main.py differs
-# ------------------------------------------------------------
+def build_run_name(dataset: str, seed: int, tmr_cfg: Dict[str, Any]) -> str:
+    return (
+        f"{dataset}"
+        f"_seed{seed}"
+        f"_steps{tmr_cfg['steps']}"
+        f"_slots{tmr_cfg['mem_slots']}"
+        f"_decay{tmr_cfg['decay']}"
+        f"_gate{int(tmr_cfg['gate'])}"
+        f"_topk{tmr_cfg['topk']}"
+    )
+
 
 def build_command(
     python_exec: str,
@@ -51,7 +51,10 @@ def build_command(
     batch_size: int,
     max_len: int,
     val_ratio: float,
+    d_model: int,
+    lr: float,
     tmr_cfg: Dict[str, Any],
+    output_dir: str,
 ) -> List[str]:
     cmd = [
         python_exec,
@@ -59,31 +62,26 @@ def build_command(
         "--dataset", str(dataset),
         "--model", "tmr",
         "--epochs", str(epochs),
-        "--seed", str(seed),
         "--batch_size", str(batch_size),
         "--max_len", str(max_len),
+        "--val_ratio", str(val_ratio),
+        "--d_model", str(d_model),
+        "--lr", str(lr),
+        "--seed", str(seed),
+        "--output_dir", str(output_dir),
         "--tmr_steps", str(tmr_cfg["steps"]),
         "--tmr_slots", str(tmr_cfg["mem_slots"]),
         "--tmr_decay", str(tmr_cfg["decay"]),
         "--tmr_topk", str(tmr_cfg["topk"]),
     ]
 
-    # Only used for datasets where your main.py expects it, e.g. imdb
-    if dataset == "imdb":
-        cmd += ["--val_ratio", str(val_ratio)]
-
     if tmr_cfg["gate"]:
-        cmd += ["--tmr_gate"]
+        cmd.append("--tmr_gate")
 
     return cmd
 
 
-# ------------------------------------------------------------
-# Parse metrics from stdout/stderr
-# Flexible enough for slightly different log styles
-# ------------------------------------------------------------
-
-def parse_metrics(output_text: str) -> Dict[str, Any]:
+def parse_metrics_from_output(output_text: str) -> Dict[str, Any]:
     text = output_text.lower()
 
     test_acc = None
@@ -91,14 +89,14 @@ def parse_metrics(output_text: str) -> Dict[str, Any]:
 
     acc_patterns = [
         r"test\s+acc(?:uracy)?\s*[:=]?\s*([0-9]*\.?[0-9]+)",
-        r"acc\s*=\s*([0-9]*\.?[0-9]+)",
+        r"\bacc\s*=\s*([0-9]*\.?[0-9]+)",
         r"\bacc(?:uracy)?\s*[:=]?\s*([0-9]*\.?[0-9]+)",
     ]
 
     time_patterns = [
         r"epoch[_\s]?time\s*[:=]?\s*([0-9]*\.?[0-9]+)\s*min",
-        r"time\s*[:=]?\s*([0-9]*\.?[0-9]+)\s*min",
-        r"time\s*=\s*([0-9]*\.?[0-9]+)",
+        r"\btime\s*[:=]?\s*([0-9]*\.?[0-9]+)\s*min",
+        r"\btime\s*=\s*([0-9]*\.?[0-9]+)",
     ]
 
     for pat in acc_patterns:
@@ -119,11 +117,49 @@ def parse_metrics(output_text: str) -> Dict[str, Any]:
     }
 
 
-# ------------------------------------------------------------
-# Run one experiment
-# live=False: quiet mode, prints clean summary after run
-# live=True : streams stdout live to terminal and saves it
-# ------------------------------------------------------------
+def parse_metrics_from_json(json_path: Path) -> Dict[str, Any]:
+    if not json_path.exists():
+        return {"test_acc": None, "epoch_time_min": None, "raw_json": None}
+
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return {"test_acc": None, "epoch_time_min": None, "raw_json": None}
+
+    test_acc = None
+    epoch_time_min = None
+
+    acc_keys = [
+        "test_acc",
+        "accuracy",
+        "acc",
+        "test_accuracy",
+    ]
+
+    time_keys = [
+        "epoch_time_min",
+        "epoch_time",
+        "time",
+        "train_time_min",
+    ]
+
+    for key in acc_keys:
+        if key in data and isinstance(data[key], (int, float)):
+            test_acc = float(data[key])
+            break
+
+    for key in time_keys:
+        if key in data and isinstance(data[key], (int, float)):
+            epoch_time_min = float(data[key])
+            break
+
+    return {
+        "test_acc": test_acc,
+        "epoch_time_min": epoch_time_min,
+        "raw_json": data,
+    }
+
 
 def run_one(
     python_exec: str,
@@ -134,10 +170,17 @@ def run_one(
     batch_size: int,
     max_len: int,
     val_ratio: float,
+    d_model: int,
+    lr: float,
     tmr_cfg: Dict[str, Any],
+    out_dir: Path,
     log_dir: Path,
     live: bool = False,
 ) -> Dict[str, Any]:
+    run_name = build_run_name(dataset, seed, tmr_cfg)
+    run_output_dir = out_dir / "model_outputs" / run_name
+    run_output_dir.mkdir(parents=True, exist_ok=True)
+
     cmd = build_command(
         python_exec=python_exec,
         main_py=main_py,
@@ -147,19 +190,14 @@ def run_one(
         batch_size=batch_size,
         max_len=max_len,
         val_ratio=val_ratio,
+        d_model=d_model,
+        lr=lr,
         tmr_cfg=tmr_cfg,
+        output_dir=str(run_output_dir),
     )
 
-    run_name = (
-        f"{dataset}"
-        f"_seed{seed}"
-        f"_steps{tmr_cfg['steps']}"
-        f"_slots{tmr_cfg['mem_slots']}"
-        f"_decay{tmr_cfg['decay']}"
-        f"_gate{int(tmr_cfg['gate'])}"
-        f"_topk{tmr_cfg['topk']}"
-    )
     log_path = log_dir / f"{run_name}.log"
+    json_path = run_output_dir / f"tmr_{dataset}_{seed}.json"
 
     print("\n" + "=" * 100)
     print(
@@ -218,8 +256,18 @@ def run_one(
             f.write("\n\nSTDERR:\n")
             f.write(stderr_text)
 
-    wall_minutes = (time.time() - wall_start) / 60.0
-    metrics = parse_metrics(full_output)
+    wall_time_min = round((time.time() - wall_start) / 60.0, 4)
+
+    parsed_output = parse_metrics_from_output(full_output)
+    parsed_json = parse_metrics_from_json(json_path)
+
+    test_acc = parsed_output["test_acc"]
+    epoch_time_min = parsed_output["epoch_time_min"]
+
+    if test_acc is None:
+        test_acc = parsed_json["test_acc"]
+    if epoch_time_min is None:
+        epoch_time_min = parsed_json["epoch_time_min"]
 
     result = {
         "dataset": dataset,
@@ -230,18 +278,19 @@ def run_one(
         "gate": tmr_cfg["gate"],
         "topk": tmr_cfg["topk"],
         "returncode": returncode,
-        "test_acc": metrics["test_acc"],
-        "epoch_time_min": metrics["epoch_time_min"],
-        "wall_time_min": round(wall_minutes, 4),
+        "test_acc": test_acc,
+        "epoch_time_min": epoch_time_min,
+        "wall_time_min": wall_time_min,
         "log_file": str(log_path),
+        "json_file": str(json_path),
+        "run_output_dir": str(run_output_dir),
     }
 
     print("\n" + "-" * 100)
     if returncode != 0:
         print(
             f"RUN END   | FAILED | dataset={dataset} | seed={seed} | "
-            f"steps={tmr_cfg['steps']} | mem_slots={tmr_cfg['mem_slots']} | "
-            f"log={log_path}"
+            f"steps={tmr_cfg['steps']} | log={log_path}"
         )
     else:
         print(
@@ -251,14 +300,11 @@ def run_one(
             f"wall_time_min={result['wall_time_min']}"
         )
         print(f"Log: {log_path}")
+        print(f"JSON: {json_path}")
     print("-" * 100)
 
     return result
 
-
-# ------------------------------------------------------------
-# Save results to CSV after each run
-# ------------------------------------------------------------
 
 def write_csv(results: List[Dict[str, Any]], csv_path: Path) -> None:
     fieldnames = [
@@ -274,6 +320,8 @@ def write_csv(results: List[Dict[str, Any]], csv_path: Path) -> None:
         "epoch_time_min",
         "wall_time_min",
         "log_file",
+        "json_file",
+        "run_output_dir",
     ]
 
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
@@ -282,24 +330,14 @@ def write_csv(results: List[Dict[str, Any]], csv_path: Path) -> None:
         writer.writerows(results)
 
 
-# ------------------------------------------------------------
-# Utility summary stats
-# ------------------------------------------------------------
-
 def mean(values: List[float]) -> float:
     return sum(values) / len(values)
 
 
 def std(values: List[float]) -> float:
-    if not values:
-        return float("nan")
     m = mean(values)
     return (sum((x - m) ** 2 for x in values) / len(values)) ** 0.5
 
-
-# ------------------------------------------------------------
-# Final summary table grouped by dataset and chosen axis
-# ------------------------------------------------------------
 
 def print_summary(results: List[Dict[str, Any]], axis: str) -> None:
     print("\n" + "=" * 100)
@@ -328,17 +366,17 @@ def print_summary(results: List[Dict[str, Any]], axis: str) -> None:
         )
         print("-" * 100)
 
-        values_sorted = sorted(grouped[dataset].keys(), key=lambda x: (isinstance(x, bool), x))
+        values_sorted = sorted(grouped[dataset].keys(), key=lambda x: str(x))
 
         for axis_value in values_sorted:
             rows = grouped[dataset][axis_value]
 
-            accs = [r["test_acc"] for r in rows if r["test_acc"] is not None]
-            epoch_times = [r["epoch_time_min"] for r in rows if r["epoch_time_min"] is not None]
-            wall_times = [r["wall_time_min"] for r in rows if r["wall_time_min"] is not None]
+            accs = [r["test_acc"] for r in rows if isinstance(r["test_acc"], (int, float))]
+            epoch_times = [r["epoch_time_min"] for r in rows if isinstance(r["epoch_time_min"], (int, float))]
+            wall_times = [r["wall_time_min"] for r in rows if isinstance(r["wall_time_min"], (int, float))]
 
             acc_mean = mean(accs) if accs else None
-            acc_std = std(accs) if accs else None
+            acc_std = std(accs) if len(accs) > 0 else None
             epoch_mean = mean(epoch_times) if epoch_times else None
             wall_mean = mean(wall_times) if wall_times else None
 
@@ -353,51 +391,46 @@ def print_summary(results: List[Dict[str, Any]], axis: str) -> None:
             )
 
 
-# ------------------------------------------------------------
-# Main
-# ------------------------------------------------------------
-
 def main():
     parser = argparse.ArgumentParser(
-        description="Automated TMR ablation runner that calls main.py repeatedly"
+        description="Automated TMR ablation runner"
     )
 
-    parser.add_argument("--main_py", type=str, default="main.py",
-                        help="Path to your main.py")
-    parser.add_argument("--python_exec", type=str, default=sys.executable,
-                        help="Python executable to use")
+    parser.add_argument("--main_py", type=str, default="main.py")
+    parser.add_argument("--python_exec", type=str, default=sys.executable)
 
-    parser.add_argument("--axis", type=str, required=True,
-                        choices=["steps", "mem_slots", "decay", "gate", "topk"],
-                        help="Which ablation axis to sweep")
+    parser.add_argument(
+        "--axis",
+        type=str,
+        required=True,
+        choices=["steps", "mem_slots", "decay", "gate", "topk"],
+    )
 
-    parser.add_argument("--datasets", nargs="+", default=["imdb", "listops_synth"],
-                        help="Datasets to run")
-    parser.add_argument("--seeds", nargs="+", type=int, default=[42, 123, 999],
-                        help="Random seeds to run")
+    parser.add_argument("--datasets", nargs="+", default=["imdb", "listops_synth"])
+    parser.add_argument("--seeds", nargs="+", type=int, default=[42, 123, 999])
 
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--max_len", type=int, default=512)
     parser.add_argument("--val_ratio", type=float, default=0.1)
+    parser.add_argument("--d_model", type=int, default=128)
+    parser.add_argument("--lr", type=float, default=3e-4)
 
-    parser.add_argument("--out_dir", type=str, default="ablation_runs",
-                        help="Directory for CSV results and logs")
-    parser.add_argument("--live", action="store_true",
-                        help="Stream each run's stdout live to terminal")
+    parser.add_argument("--out_dir", type=str, default="ablation_runs")
+    parser.add_argument("--live", action="store_true")
 
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
     log_dir = out_dir / "logs"
-    out_dir.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "model_outputs").mkdir(parents=True, exist_ok=True)
 
     base_cfg = make_base_tmr()
     values = ABLATION_AXES[args.axis]
 
-    results: List[Dict[str, Any]] = []
     csv_path = out_dir / f"results_{args.axis}.csv"
+    results: List[Dict[str, Any]] = []
 
     print("=" * 100)
     print("STARTING TMR ABLATION SWEEP")
@@ -409,6 +442,8 @@ def main():
     print(f"Epochs:     {args.epochs}")
     print(f"Batch size: {args.batch_size}")
     print(f"Max len:    {args.max_len}")
+    print(f"d_model:    {args.d_model}")
+    print(f"lr:         {args.lr}")
     print(f"Live mode:  {args.live}")
     print(f"Output dir: {out_dir}")
     print("=" * 100)
@@ -434,7 +469,10 @@ def main():
                     batch_size=args.batch_size,
                     max_len=args.max_len,
                     val_ratio=args.val_ratio,
+                    d_model=args.d_model,
+                    lr=args.lr,
                     tmr_cfg=cfg,
+                    out_dir=out_dir,
                     log_dir=log_dir,
                     live=args.live,
                 )
@@ -448,6 +486,7 @@ def main():
     print("DONE")
     print(f"CSV saved to: {csv_path}")
     print(f"Logs saved to: {log_dir}")
+    print(f"Model outputs saved to: {out_dir / 'model_outputs'}")
     print("=" * 100)
 
 
