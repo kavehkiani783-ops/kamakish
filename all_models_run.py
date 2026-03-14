@@ -122,7 +122,7 @@ def main() -> None:
         print(f"[{idx}/{len(all_jobs)}] Running: {command_str}")
 
         start = time.perf_counter()
-        completed = subprocess.run(command, capture_output=True, text=True)
+        completed = subprocess.run(command, text=True)
         wall_time_min = (time.perf_counter() - start) / 60.0
 
         stdout = completed.stdout or ""
