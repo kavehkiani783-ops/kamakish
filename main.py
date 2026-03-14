@@ -69,21 +69,10 @@ def build_model(args, vocab_size, num_classes, pad_id):
 
 
 def build_output_filename(args):
-    parts = [args.model, args.dataset]
-
-    if args.model.lower() == "tmr":
-        parts.extend([
-            f"slots{args.tmr_slots}",
-            f"steps{0 if args.tmr_no_settle else args.tmr_steps}",
-            f"decay{args.tmr_decay}",
-            f"gate{int(args.tmr_gate)}",
-            f"topk{args.tmr_topk}",
-            f"dropout{args.tmr_dropout}",
-            f"clip{args.tmr_score_clip}",
-        ])
-
-    parts.append(f"seed{args.seed}")
-    return "_".join(str(p) for p in parts) + ".json"
+    """
+    Keep filenames consistent with what the runners expect.
+    """
+    return f"{args.model}_{args.dataset}_seed{args.seed}.json"
 
 
 def main():
