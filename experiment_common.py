@@ -59,27 +59,29 @@ def expected_main_result_path(model: str, dataset: str, seed: int, results_dir: 
     return results_dir / f"{model}_{dataset}_seed{seed}.json"
 
 
-def extract_metric(payload: Dict[str, Any], candidate_keys: Iterable[str]) -> Optional[float]:
+def extract_metric(payload, candidate_keys):
     """
-    Try several possible key names because different main.py versions often use
-    slightly different field names.
+    Recursively search a nested dict/list structure for any matching metric key.
+    Returns the first numeric value found.
     """
-    for key in candidate_keys:
-        if key in payload:
-            value = safe_float(payload.get(key))
-            if value is not None:
-                return value
+    def _search(obj):
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if key in candidate_keys:
+                    v = safe_float(value)
+                    if v is not None:
+                        return v
+                found = _search(value)
+                if found is not None:
+                    return found
+        elif isinstance(obj, list):
+            for item in obj:
+                found = _search(item)
+                if found is not None:
+                    return found
+        return None
 
-    # Try one level nested dictionaries
-    for _, value in payload.items():
-        if isinstance(value, dict):
-            for key in candidate_keys:
-                if key in value:
-                    nested_value = safe_float(value.get(key))
-                    if nested_value is not None:
-                        return nested_value
-
-    return None
+    return _search(payload)
 
 
 def summarise_runs(run_json_paths: List[Path], output_dir: Path) -> None:
