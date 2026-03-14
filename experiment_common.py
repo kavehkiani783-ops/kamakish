@@ -1,6 +1,5 @@
 import csv
 import json
-import math
 import shutil
 import statistics
 from datetime import datetime
@@ -59,15 +58,23 @@ def expected_main_result_path(model: str, dataset: str, seed: int, results_dir: 
     return results_dir / f"{model}_{dataset}_seed{seed}.json"
 
 
-def extract_metric(payload, candidate_keys):
+def normalise_key(key: Any) -> str:
+    if key is None:
+        return ""
+    return str(key).strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def extract_metric(payload: Any, candidate_keys: Iterable[str]) -> Optional[float]:
     """
     Recursively search a nested dict/list structure for any matching metric key.
     Returns the first numeric value found.
     """
-    def _search(obj):
+    normalised_candidates = {normalise_key(k) for k in candidate_keys}
+
+    def _search(obj: Any) -> Optional[float]:
         if isinstance(obj, dict):
             for key, value in obj.items():
-                if key in candidate_keys:
+                if normalise_key(key) in normalised_candidates:
                     v = safe_float(value)
                     if v is not None:
                         return v
@@ -101,20 +108,125 @@ def summarise_runs(run_json_paths: List[Path], output_dir: Path) -> None:
             "ablation_name": payload.get("ablation_name"),
             "ablation_value": payload.get("ablation_value"),
             "command": payload.get("command"),
+            "status": payload.get("status"),
+            "returncode": payload.get("returncode"),
             "wall_time_min": safe_float(payload.get("wall_time_min")),
-            "test_accuracy": extract_metric(metrics, ["test_accuracy", "accuracy", "acc", "test_acc"]),
-            "macro_f1": extract_metric(metrics, ["macro_f1", "f1_macro"]),
-            "weighted_f1": extract_metric(metrics, ["weighted_f1", "f1_weighted"]),
-            "balanced_accuracy": extract_metric(metrics, ["balanced_accuracy", "bal_acc"]),
-            "auroc": extract_metric(metrics, ["auroc", "roc_auc"]),
-            "auprc": extract_metric(metrics, ["auprc", "pr_auc"]),
-            "nll": extract_metric(metrics, ["nll", "neg_log_likelihood", "negative_log_likelihood"]),
-            "brier": extract_metric(metrics, ["brier", "brier_score"]),
-            "ece": extract_metric(metrics, ["ece"]),
-            "epoch_time_min": extract_metric(metrics, ["epoch_time_min", "mean_epoch_time_min", "epoch_time"]),
-            "tokens_per_sec": extract_metric(metrics, ["tokens_per_sec", "tok_per_sec"]),
-            "gpu_memory_mb": extract_metric(metrics, ["gpu_memory_mb", "max_gpu_memory_mb", "gpu_mem_mb"]),
-            "param_count": extract_metric(metrics, ["param_count", "params", "num_parameters"]),
+            "test_accuracy": extract_metric(
+                metrics,
+                [
+                    "test_accuracy",
+                    "accuracy",
+                    "acc",
+                    "test_acc",
+                    "test/accuracy",
+                    "test_accuracy_mean",
+                ],
+            ),
+            "macro_f1": extract_metric(
+                metrics,
+                [
+                    "macro_f1",
+                    "f1_macro",
+                    "macro_f1_score",
+                    "test_macro_f1",
+                ],
+            ),
+            "weighted_f1": extract_metric(
+                metrics,
+                [
+                    "weighted_f1",
+                    "f1_weighted",
+                    "weighted_f1_score",
+                    "test_weighted_f1",
+                ],
+            ),
+            "balanced_accuracy": extract_metric(
+                metrics,
+                [
+                    "balanced_accuracy",
+                    "balanced_acc",
+                    "bal_acc",
+                    "test_balanced_accuracy",
+                ],
+            ),
+            "auroc": extract_metric(
+                metrics,
+                [
+                    "auroc",
+                    "roc_auc",
+                    "auc_roc",
+                    "test_auroc",
+                ],
+            ),
+            "auprc": extract_metric(
+                metrics,
+                [
+                    "auprc",
+                    "pr_auc",
+                    "auc_pr",
+                    "test_auprc",
+                ],
+            ),
+            "nll": extract_metric(
+                metrics,
+                [
+                    "nll",
+                    "neg_log_likelihood",
+                    "negative_log_likelihood",
+                    "test_nll",
+                ],
+            ),
+            "brier": extract_metric(
+                metrics,
+                [
+                    "brier",
+                    "brier_score",
+                    "test_brier",
+                ],
+            ),
+            "ece": extract_metric(
+                metrics,
+                [
+                    "ece",
+                    "expected_calibration_error",
+                    "test_ece",
+                ],
+            ),
+            "epoch_time_min": extract_metric(
+                metrics,
+                [
+                    "epoch_time_min",
+                    "mean_epoch_time_min",
+                    "epoch_time",
+                    "avg_epoch_time_min",
+                ],
+            ),
+            "tokens_per_sec": extract_metric(
+                metrics,
+                [
+                    "tokens_per_sec",
+                    "tok_per_sec",
+                    "tokens_sec",
+                ],
+            ),
+            "gpu_memory_mb": extract_metric(
+                metrics,
+                [
+                    "gpu_memory_mb",
+                    "max_gpu_memory_mb",
+                    "gpu_mem_mb",
+                    "gpu_memory",
+                ],
+            ),
+            "param_count": extract_metric(
+                metrics,
+                [
+                    "param_count",
+                    "params",
+                    "num_parameters",
+                    "parameter_count",
+                ],
+            ),
         }
         rows.append(row)
 
@@ -142,6 +254,7 @@ def write_csv(path: Path, rows: List[Dict[str, Any]]) -> None:
 def build_summary_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Aggregate across seeds.
+
     Grouping:
       - models run: dataset + model
       - ablation run: dataset + model + ablation_name + ablation_value
@@ -166,11 +279,44 @@ def build_summary_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         accs = [safe_float(r.get("test_accuracy")) for r in group_rows]
         accs = [x for x in accs if x is not None]
 
+        macro_f1s = [safe_float(r.get("macro_f1")) for r in group_rows]
+        macro_f1s = [x for x in macro_f1s if x is not None]
+
+        weighted_f1s = [safe_float(r.get("weighted_f1")) for r in group_rows]
+        weighted_f1s = [x for x in weighted_f1s if x is not None]
+
+        balanced_accs = [safe_float(r.get("balanced_accuracy")) for r in group_rows]
+        balanced_accs = [x for x in balanced_accs if x is not None]
+
+        aurocs = [safe_float(r.get("auroc")) for r in group_rows]
+        aurocs = [x for x in aurocs if x is not None]
+
+        auprcs = [safe_float(r.get("auprc")) for r in group_rows]
+        auprcs = [x for x in auprcs if x is not None]
+
+        nlls = [safe_float(r.get("nll")) for r in group_rows]
+        nlls = [x for x in nlls if x is not None]
+
+        briers = [safe_float(r.get("brier")) for r in group_rows]
+        briers = [x for x in briers if x is not None]
+
+        eces = [safe_float(r.get("ece")) for r in group_rows]
+        eces = [x for x in eces if x is not None]
+
         wall_times = [safe_float(r.get("wall_time_min")) for r in group_rows]
         wall_times = [x for x in wall_times if x is not None]
 
         epoch_times = [safe_float(r.get("epoch_time_min")) for r in group_rows]
         epoch_times = [x for x in epoch_times if x is not None]
+
+        tokens_per_sec = [safe_float(r.get("tokens_per_sec")) for r in group_rows]
+        tokens_per_sec = [x for x in tokens_per_sec if x is not None]
+
+        gpu_memory_mb = [safe_float(r.get("gpu_memory_mb")) for r in group_rows]
+        gpu_memory_mb = [x for x in gpu_memory_mb if x is not None]
+
+        param_counts = [safe_float(r.get("param_count")) for r in group_rows]
+        param_counts = [x for x in param_counts if x is not None]
 
         summary_rows.append(
             {
@@ -183,12 +329,22 @@ def build_summary_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "std_test_accuracy": std_or_none(accs),
                 "min_test_accuracy": min(accs) if accs else None,
                 "max_test_accuracy": max(accs) if accs else None,
+                "mean_macro_f1": mean_or_none(macro_f1s),
+                "mean_weighted_f1": mean_or_none(weighted_f1s),
+                "mean_balanced_accuracy": mean_or_none(balanced_accs),
+                "mean_auroc": mean_or_none(aurocs),
+                "mean_auprc": mean_or_none(auprcs),
+                "mean_nll": mean_or_none(nlls),
+                "mean_brier": mean_or_none(briers),
+                "mean_ece": mean_or_none(eces),
                 "mean_epoch_time_min": mean_or_none(epoch_times),
                 "mean_wall_time_min": mean_or_none(wall_times),
+                "mean_tokens_per_sec": mean_or_none(tokens_per_sec),
+                "mean_gpu_memory_mb": mean_or_none(gpu_memory_mb),
+                "mean_param_count": mean_or_none(param_counts),
             }
         )
 
-    # Stable ordering
     summary_rows.sort(
         key=lambda r: (
             str(r.get("dataset")),
