@@ -21,91 +21,96 @@ DATASET_CONFIGS = {
 }
 
 MODEL_CONFIGS = {
-    "meanpool": {
-        "args": [],
-    },
-    "bilstm": {
-        "args": [],
-    },
-    "tiny_transformer": {
-        "args": [],
-    },
-    "transformer_base": {
-        "args": [],
-    },
-    "tmr": {
-        "args": [],
-        # If you want fixed TMR settings for the comparison, use for example:
-        # "args": ["--tmr_steps", "2", "--tmr_slots", "16"]
-    },
+    "meanpool": {"args": []},
+    "bilstm": {"args": []},
+    "tiny_transformer": {"args": []},
+    "transformer_base": {"args": []},
+    "tmr": {"args": []},
+    # If you want fixed TMR settings for comparison, replace above with e.g.
+    # "tmr": {"args": ["--tmr_steps", "2", "--tmr_slots", "16"]},
 }
 
 
-def build_command(dataset_name, model_name, seed):
+def build_command(dataset, model, seed):
     cmd = [
         PYTHON_BIN,
         "main.py",
-        "--dataset", dataset_name,
-        "--model", model_name,
+        "--dataset", dataset,
+        "--model", model,
         "--seed", str(seed),
     ]
-    cmd.extend(DATASET_CONFIGS[dataset_name]["args"])
-    cmd.extend(MODEL_CONFIGS[model_name]["args"])
+    cmd.extend(DATASET_CONFIGS[dataset]["args"])
+    cmd.extend(MODEL_CONFIGS[model]["args"])
     return cmd
 
 
-def run_one(dataset_name, model_name, seed):
-    cmd = build_command(dataset_name, model_name, seed)
+def run_one(run_idx, total_runs, dataset, model, seed):
+    cmd = build_command(dataset, model, seed)
     cmd_str = " ".join(cmd)
-    json_name = f"{dataset_name}__{model_name}__seed{seed}.json"
-    json_path = OUTPUT_DIR / json_name
 
-    print(f"\n[RUN] {cmd_str}", flush=True)
+    print("\n" + "=" * 90)
+    print(f"RUN {run_idx}/{total_runs}")
+    print(cmd_str)
+    print("=" * 90)
 
-    start = time.perf_counter()
-    proc = subprocess.run(
+    start = time.time()
+
+    process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
-        encoding="utf-8",
-        errors="replace",
+        bufsize=1,
+        universal_newlines=True,
     )
-    end = time.perf_counter()
 
-    wall_time_min = (end - start) / 60.0
+    captured_lines = []
+
+    assert process.stdout is not None
+    for line in process.stdout:
+        print(line, end="")          # show EXACT main.py output live
+        captured_lines.append(line)  # also save it
+
+    process.wait()
+
+    wall_time_min = (time.time() - start) / 60.0
 
     record = {
-        "dataset": dataset_name,
-        "model": model_name,
+        "dataset": dataset,
+        "model": model,
         "seed": seed,
         "command": cmd_str,
-        "return_code": proc.returncode,
+        "return_code": process.returncode,
         "wall_time_min": wall_time_min,
-        "stdout": proc.stdout,
-        "stderr": proc.stderr,
+        "stdout": "".join(captured_lines),
     }
 
-    with open(json_path, "w", encoding="utf-8") as f:
+    out_path = OUTPUT_DIR / f"{dataset}__{model}__seed{seed}.json"
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(record, f, indent=2)
 
-    if proc.returncode == 0:
-        print(f"[OK] saved -> {json_path}")
-    else:
-        print(f"[FAIL] return_code={proc.returncode} -> {json_path}")
+    print("-" * 90)
+    print(f"Finished run {run_idx}/{total_runs} | return_code={process.returncode}")
+    print(f"Saved raw log to: {out_path}")
+    print("-" * 90)
 
 
 def main():
-    total = len(DATASET_CONFIGS) * len(MODEL_CONFIGS) * len(SEEDS)
-    print(f"Total runs: {total}")
+    combos = [
+        (dataset, model, seed)
+        for dataset in DATASET_CONFIGS
+        for model in MODEL_CONFIGS
+        for seed in SEEDS
+    ]
 
-    for dataset_name in DATASET_CONFIGS:
-        for model_name in MODEL_CONFIGS:
-            for seed in SEEDS:
-                run_one(dataset_name, model_name, seed)
+    total_runs = len(combos)
+    print(f"Total runs: {total_runs}")
 
-    print("\nAll runs finished.")
-    print(f"JSON outputs saved in: {OUTPUT_DIR.resolve()}")
+    for i, (dataset, model, seed) in enumerate(combos, start=1):
+        run_one(i, total_runs, dataset, model, seed)
+
+    print("\nAll runs completed.")
+    print(f"Logs saved in: {OUTPUT_DIR.resolve()}")
 
 
 if __name__ == "__main__":
