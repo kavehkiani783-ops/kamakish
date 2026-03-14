@@ -124,9 +124,9 @@ def main() -> None:
         start = time.perf_counter()
         completed = subprocess.run(command, text=True)
         wall_time_min = (time.perf_counter() - start) / 60.0
-
-        stdout = completed.stdout or ""
-        stderr = completed.stderr or ""
+        
+        stdout = ""
+        stderr = ""
 
         if completed.returncode != 0:
             payload = {
