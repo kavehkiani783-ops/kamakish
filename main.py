@@ -69,9 +69,6 @@ def build_model(args, vocab_size, num_classes, pad_id):
 
 
 def build_output_filename(args):
-    """
-    Create a unique result filename so ablation runs do not overwrite each other.
-    """
     parts = [args.model, args.dataset]
 
     if args.model.lower() == "tmr":
@@ -128,7 +125,18 @@ def main():
     print(f"Device: {device}")
     if device.type == "cuda":
         print(f"GPU: {torch.cuda.get_device_name(0)}")
+    print(f"Model: {args.model} | d_model={args.d_model} | lr={args.lr}")
     print(f"Dataset: {args.dataset} | max_len={args.max_len} | batch_size={args.batch_size}")
+
+    if args.model.lower() == "tmr":
+        print(
+            f"TMR config | slots={args.tmr_slots} | "
+            f"steps={0 if args.tmr_no_settle else args.tmr_steps} | "
+            f"decay={args.tmr_decay} | gate={args.tmr_gate} | "
+            f"topk={args.tmr_topk} | dropout={args.tmr_dropout} | "
+            f"score_clip={args.tmr_score_clip}"
+        )
+
     print("-" * 70)
 
     train_loader, val_loader, test_loader, meta = get_dataset(
@@ -165,7 +173,7 @@ def main():
     out_filename = build_output_filename(args)
     out_path = os.path.join(args.output_dir, out_filename)
 
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
 
     print("-" * 70)
