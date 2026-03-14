@@ -1,6 +1,5 @@
 import json
 import math
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -27,13 +26,6 @@ def safe_float(x):
         return v
     except Exception:
         return None
-
-
-def get_first_existing(d, keys, default=None):
-    for k in keys:
-        if k in d and d[k] is not None:
-            return d[k]
-    return default
 
 
 def load_json(json_path):
@@ -88,46 +80,67 @@ def parse_run_dir_name(run_dir_name):
     }
 
 
+def recursive_find_key(obj, target_keys):
+    """
+    Search recursively through nested dict/list structures
+    and return the first non-None value matching any target key.
+    """
+    if isinstance(target_keys, str):
+        target_keys = [target_keys]
+
+    if isinstance(obj, dict):
+        for k in target_keys:
+            if k in obj and obj[k] is not None:
+                return obj[k]
+
+        for v in obj.values():
+            found = recursive_find_key(v, target_keys)
+            if found is not None:
+                return found
+
+    elif isinstance(obj, list):
+        for item in obj:
+            found = recursive_find_key(item, target_keys)
+            if found is not None:
+                return found
+
+    return None
+
+
 def extract_metrics(results):
     return {
         "test_acc": safe_float(
-            get_first_existing(results, ["test_acc", "accuracy", "acc", "test_accuracy"])
+            recursive_find_key(results, ["test_acc", "accuracy", "acc", "test_accuracy"])
         ),
         "macro_f1": safe_float(
-            get_first_existing(results, ["macro_f1"])
+            recursive_find_key(results, ["macro_f1"])
         ),
         "weighted_f1": safe_float(
-            get_first_existing(results, ["weighted_f1"])
+            recursive_find_key(results, ["weighted_f1"])
         ),
         "balanced_accuracy": safe_float(
-            get_first_existing(results, ["balanced_accuracy"])
+            recursive_find_key(results, ["balanced_accuracy"])
         ),
         "auroc": safe_float(
-            get_first_existing(results, ["auroc", "roc_auc"])
+            recursive_find_key(results, ["auroc", "roc_auc"])
         ),
         "auprc": safe_float(
-            get_first_existing(results, ["auprc", "pr_auc"])
+            recursive_find_key(results, ["auprc", "pr_auc"])
         ),
         "nll": safe_float(
-            get_first_existing(results, ["nll", "log_loss"])
+            recursive_find_key(results, ["nll", "log_loss"])
         ),
         "brier": safe_float(
-            get_first_existing(results, ["brier", "brier_score"])
+            recursive_find_key(results, ["brier", "brier_score"])
         ),
         "ece": safe_float(
-            get_first_existing(results, ["ece"])
+            recursive_find_key(results, ["ece"])
         ),
         "mean_epoch_time": safe_float(
-            get_first_existing(
-                results,
-                ["mean_epoch_time", "epoch_time_min", "epoch_time", "train_time_min"]
-            )
+            recursive_find_key(results, ["mean_epoch_time", "epoch_time_min", "epoch_time", "train_time_min"])
         ),
         "wall_time": safe_float(
-            get_first_existing(
-                results,
-                ["wall_time", "wall_time_min", "elapsed_time", "time"]
-            )
+            recursive_find_key(results, ["wall_time", "wall_time_min", "elapsed_time", "time"])
         ),
     }
 
