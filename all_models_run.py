@@ -13,21 +13,52 @@ SEEDS = [42, 123, 999]
 
 DATASET_CONFIGS = {
     "imdb": {
-        "args": ["--epochs", "3", "--val_ratio", "0.1"],
+        "args": [
+            "--epochs", "3",
+            "--batch_size", "32",
+            "--max_len", "512",
+            "--val_ratio", "0.1",
+            "--d_model", "128",
+            "--lr", "3e-4",
+            "--output_dir", "results",
+        ],
     },
     "listops_synth": {
-        "args": ["--epochs", "3", "--batch_size", "64", "--max_len", "512"],
+        "args": [
+            "--epochs", "3",
+            "--batch_size", "64",
+            "--max_len", "512",
+            "--val_ratio", "0.1",
+            "--d_model", "128",
+            "--lr", "3e-4",
+            "--output_dir", "results",
+        ],
     },
 }
 
 MODEL_CONFIGS = {
-    "meanpool": {"args": []},
-    "bilstm": {"args": []},
-    "tiny_transformer": {"args": []},
-    "transformer_base": {"args": []},
-    "tmr": {"args": []},
-    # If you want fixed TMR settings for comparison, replace above with e.g.
-    # "tmr": {"args": ["--tmr_steps", "2", "--tmr_slots", "16"]},
+    "meanpool": {
+        "args": [],
+    },
+    "bilstm": {
+        "args": [],
+    },
+    "tiny_transformer": {
+        "args": [],
+    },
+    "transformer_base": {
+        "args": [],
+    },
+    "tmr": {
+        "args": [
+            "--tmr_steps", "2",
+            "--tmr_slots", "16",
+            "--tmr_decay", "0.9",
+            "--tmr_topk", "0",
+            "--tmr_dropout", "0.1",
+            "--tmr_score_clip", "20.0",
+        ],
+    },
 }
 
 
@@ -68,8 +99,8 @@ def run_one(run_idx, total_runs, dataset, model, seed):
 
     assert process.stdout is not None
     for line in process.stdout:
-        print(line, end="")          # show EXACT main.py output live
-        captured_lines.append(line)  # also save it
+        print(line, end="")
+        captured_lines.append(line)
 
     process.wait()
 
