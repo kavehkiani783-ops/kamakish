@@ -1,5 +1,4 @@
 import argparse
-import json
 import shlex
 import subprocess
 import sys
@@ -43,9 +42,25 @@ def model_grid() -> List[Dict]:
                 "--dataset", "imdb",
                 "--model", model,
                 "--epochs", "3",
+                "--batch_size", "32",
+                "--max_len", "512",
                 "--val_ratio", "0.1",
+                "--d_model", "128",
+                "--lr", "3e-4",
                 "--seed", str(seed),
             ]
+
+            if model == "tmr":
+                cmd.extend([
+                    "--tmr_steps", "2",
+                    "--tmr_slots", "16",
+                    "--tmr_decay", "0.9",
+                    "--tmr_topk", "0",
+                    "--tmr_dropout", "0.1",
+                    "--tmr_score_clip", "20.0",
+                ])
+                # no --tmr_gate, so gate remains False
+
             runs.append(
                 {
                     "dataset": "imdb",
@@ -64,8 +79,23 @@ def model_grid() -> List[Dict]:
                 "--epochs", "3",
                 "--batch_size", "64",
                 "--max_len", "512",
+                "--val_ratio", "0.1",
+                "--d_model", "128",
+                "--lr", "3e-4",
                 "--seed", str(seed),
             ]
+
+            if model == "tmr":
+                cmd.extend([
+                    "--tmr_steps", "2",
+                    "--tmr_slots", "16",
+                    "--tmr_decay", "0.9",
+                    "--tmr_topk", "0",
+                    "--tmr_dropout", "0.1",
+                    "--tmr_score_clip", "20.0",
+                ])
+                # no --tmr_gate, so gate remains False
+
             runs.append(
                 {
                     "dataset": "listops_synth",
@@ -124,7 +154,7 @@ def main() -> None:
         start = time.perf_counter()
         completed = subprocess.run(command, text=True)
         wall_time_min = (time.perf_counter() - start) / 60.0
-        
+
         stdout = ""
         stderr = ""
 
