@@ -16,49 +16,48 @@ MODEL_ORDER = ["meanpool", "bilstm", "tiny_transformer", "transformer_base", "tm
 
 METRIC_PATTERNS = {
     "test_acc": [
-        r"test[_\s-]*acc(?:uracy)?\s*[:=]\s*([0-9]*\.?[0-9]+)",
-        r"\baccuracy\s*[:=]\s*([0-9]*\.?[0-9]+)",
-        r"\bacc\s*[:=]\s*([0-9]*\.?[0-9]+)",
+        r"test\s+acc\s+([0-9]*\.?[0-9]+)",
+        r"test[_\s-]*acc(?:uracy)?\s*[:=]?\s*([0-9]*\.?[0-9]+)",
     ],
     "macro_f1": [
-        r"macro[_\s-]*f1\s*[:=]\s*([0-9]*\.?[0-9]+)",
+        r"macro[_\s-]*f1\s*[:=]?\s*([0-9]*\.?[0-9]+)",
     ],
     "weighted_f1": [
-        r"weighted[_\s-]*f1\s*[:=]\s*([0-9]*\.?[0-9]+)",
+        r"weighted[_\s-]*f1\s*[:=]?\s*([0-9]*\.?[0-9]+)",
     ],
     "balanced_accuracy": [
-        r"balanced[_\s-]*accuracy\s*[:=]\s*([0-9]*\.?[0-9]+)",
+        r"balanced[_\s-]*accuracy\s*[:=]?\s*([0-9]*\.?[0-9]+)",
     ],
     "auroc": [
-        r"auroc\s*[:=]\s*([0-9]*\.?[0-9]+)",
+        r"auroc\s*[:=]?\s*([0-9]*\.?[0-9]+)",
     ],
     "auprc": [
-        r"auprc\s*[:=]\s*([0-9]*\.?[0-9]+)",
+        r"auprc\s*[:=]?\s*([0-9]*\.?[0-9]+)",
     ],
     "nll": [
-        r"nll\s*[:=]\s*([0-9]*\.?[0-9]+)",
+        r"nll\s*[:=]?\s*([0-9]*\.?[0-9]+)",
     ],
     "brier": [
-        r"brier(?:[_\s-]*score)?\s*[:=]\s*([0-9]*\.?[0-9]+)",
+        r"brier(?:[_\s-]*score)?\s*[:=]?\s*([0-9]*\.?[0-9]+)",
     ],
     "ece": [
-        r"ece\s*[:=]\s*([0-9]*\.?[0-9]+)",
+        r"ece\s*[:=]?\s*([0-9]*\.?[0-9]+)",
     ],
     "epoch_time_min": [
-        r"epoch[_\s-]*time.*?[:=]\s*([0-9]*\.?[0-9]+)",
-        r"mean[_\s-]*epoch[_\s-]*time.*?[:=]\s*([0-9]*\.?[0-9]+)",
+        r"epoch[_\s-]*time\s+([0-9]*\.?[0-9]+)\s*min",
+        r"mean[_\s-]*epoch[_\s-]*time\s*[:=]?\s*([0-9]*\.?[0-9]+)",
     ],
     "tokens_per_sec": [
-        r"tokens[/_\s-]*sec\s*[:=]\s*([0-9]*\.?[0-9]+)",
-        r"tokens\s*per\s*sec(?:ond)?\s*[:=]\s*([0-9]*\.?[0-9]+)",
+        r"tokens[/_\s-]*sec\s*[:=]?\s*([0-9]*\.?[0-9]+)",
+        r"tokens\s*per\s*sec(?:ond)?\s*[:=]?\s*([0-9]*\.?[0-9]+)",
     ],
     "gpu_mem_gb": [
-        r"gpu.*?mem.*?[:=]\s*([0-9]*\.?[0-9]+)",
-        r"memory.*?[:=]\s*([0-9]*\.?[0-9]+)",
+        r"gpu.*?mem.*?[:=]?\s*([0-9]*\.?[0-9]+)",
+        r"memory.*?[:=]?\s*([0-9]*\.?[0-9]+)",
     ],
     "param_count": [
-        r"param(?:eter)?s?\s*[:=]\s*([0-9]+)",
-        r"num[_\s-]*params\s*[:=]\s*([0-9]+)",
+        r"param(?:eter)?s?\s*[:=]?\s*([0-9]+)",
+        r"num[_\s-]*params\s*[:=]?\s*([0-9]+)",
     ],
 }
 
@@ -90,9 +89,10 @@ def find_metric_in_text(text, patterns):
         return None
 
     for pattern in patterns:
-        match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
-        if match:
-            return try_float(match.group(1))
+        matches = re.findall(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+        if matches:
+            # take the last match because epoch-by-epoch logs contain multiple values
+            return try_float(matches[-1])
     return None
 
 
