@@ -293,7 +293,7 @@ def main():
     parser.add_argument("--main_py", default="main.py")
     parser.add_argument("--python_exec", default=sys.executable)
 
-    parser.add_argument("--out_dir", default="ablation_runs")
+    parser.add_argument("--out_dir", default="ablation_runs/steps_ablation")
 
     args = parser.parse_args()
 
