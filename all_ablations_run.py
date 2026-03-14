@@ -187,11 +187,11 @@ def main() -> None:
         print(f"[{idx}/{len(jobs)}] Running: {command_str}")
 
         start = time.perf_counter()
-        completed = subprocess.run(command, capture_output=True, text=True)
+        completed = subprocess.run(command, text=True)
         wall_time_min = (time.perf_counter() - start) / 60.0
-
-        stdout = completed.stdout or ""
-        stderr = completed.stderr or ""
+        
+        stdout = ""
+        stderr = ""
 
         out_name = f"tmr_{dataset}_{ablation_name}{ablation_value}_seed{seed}.json"
         out_path = runs_dir / out_name
