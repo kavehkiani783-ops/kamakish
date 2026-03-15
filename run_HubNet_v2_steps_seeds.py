@@ -11,15 +11,15 @@ def run_cmd(cmd):
 
 def main():
     dataset = "listops_synth"
-    model = "NubNet_v2"
+    model = "HubNet_v2"
     epochs = 3
     batch_size = 64
     max_len = 512
     d_model = 128
-    NubNet_slots = 32
-    NubNet_topk = 0
-    NubNet_dropout = 0.1
-    NubNet_score_clip = 20.0
+    HubNet_slots = 32
+    HubNet_topk = 0
+    HubNet_dropout = 0.1
+    HubNet_score_clip = 20.0
 
     seeds = [42, 43, 44]
     steps_list = [1, 2, 4]
@@ -35,16 +35,16 @@ def main():
                 "--max_len", str(max_len),
                 "--seed", str(seed),
                 "--d_model", str(d_model),
-                "--NubNet_slots", str(NubNet_slots),
-                "--NubNet_steps", str(steps),
-                "--NubNet_topk", str(NubNet_topk),
-                "--NubNet_dropout", str(NubNet_dropout),
-                "--NubNet_score_clip", str(NubNet_score_clip),
-                "--NubNet_gate",
+                "--HubNet_slots", str(HubNet_slots),
+                "--HubNet_steps", str(steps),
+                "--HubNet_topk", str(HubNet_topk),
+                "--HubNet_dropout", str(HubNet_dropout),
+                "--HubNet_score_clip", str(HubNet_score_clip),
+                "--HubNet_gate",
             ]
             run_cmd(cmd)
 
-    print("\nAll NUBNET-v2 step/seed runs completed.")
+    print("\nAll HUBNET-v2 step/seed runs completed.")
 
 
 if __name__ == "__main__":
