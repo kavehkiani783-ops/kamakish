@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 
 @dataclass
-class NUBNETConfig:
+class HUBNETConfig:
     vocab_size: int
     num_classes: int
 
