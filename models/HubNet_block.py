@@ -29,9 +29,9 @@ def sparse_topk_softmax(scores: torch.Tensor, topk: int) -> torch.Tensor:
     return F.softmax(masked, dim=-1)
 
 
-class NUBNETModel(nn.Module):
+class HUBNETModel(nn.Module):
     """
-    NUBNET-v1 baseline model.
+    HUBNET-v1 baseline model.
 
     This version keeps the original EMA-style memory update:
         M_new = decay * M + (1 - decay) * write
@@ -174,13 +174,13 @@ class NUBNETModel(nn.Module):
         return logits
 
 
-class NUBNETBlockV2(nn.Module):
+class HUBNETBlockV2(nn.Module):
     """
-    NUBNET-v2:
+    HUBNET-v2:
     - residual memory updates
     - learned write gate
     - optional memory normalisation
-    - keeps the same high-level NUBNET idea but avoids excessive memory mixing
+    - keeps the same high-level HUBNET idea but avoids excessive memory mixing
 
     Expected input:
       input_ids: (B, T)
