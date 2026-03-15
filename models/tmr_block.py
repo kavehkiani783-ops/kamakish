@@ -4,200 +4,247 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class TMRModel(nn.Module):
+def masked_mean(x: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
     """
-    Token–Memory Resonance (TMR)
+    x: (B, T, D)
+    attention_mask: (B, T) with 1 for real tokens, 0 for padding
+    """
+    mask = attention_mask.unsqueeze(-1).float()  # (B, T, 1)
+    summed = (x * mask).sum(dim=1)               # (B, D)
+    denom = mask.sum(dim=1).clamp_min(1.0)       # (B, 1)
+    return summed / denom
 
-    Constructor signature is intentionally:
-        TMRModel(d_model, num_classes, config)
 
-    Expected config fields:
-        vocab_size: int
-        max_len: int = 512
-        mem_slots: int = 64
-        steps: int = 4
-        decay: float = 0.9
-        gate: bool = False
-        topk: int = 0              # 0 => softmax binding
-        dropout: float = 0.1
-        score_clip: float = 20.0
+def sparse_topk_softmax(scores: torch.Tensor, topk: int) -> torch.Tensor:
+    """
+    scores: (B, T, S)
+    topk = 0 means dense softmax
+    """
+    if topk <= 0 or topk >= scores.size(-1):
+        return F.softmax(scores, dim=-1)
+
+    top_vals, top_idx = torch.topk(scores, k=topk, dim=-1)
+    masked = torch.full_like(scores, float("-inf"))
+    masked.scatter_(-1, top_idx, top_vals)
+    return F.softmax(masked, dim=-1)
+
+
+class TMRBlockV2(nn.Module):
+    """
+    TMR-v2:
+    - residual memory updates
+    - learned write gate
+    - optional memory normalisation
+    - keeps the same high-level TMR idea but avoids excessive memory mixing
+
+    Expected input:
+      input_ids: (B, T)
+      attention_mask: (B, T)  with 1=real token, 0=pad
+
+    Output:
+      logits: (B, C)
     """
 
-    def __init__(self, d_model: int, num_classes: int, config):
+    def __init__(self, config):
         super().__init__()
+        self.config = config
 
-        self.cfg = config
-        self.d_model = int(d_model)
-        self.num_classes = int(num_classes)
+        d_model = config.d_model
+        self.d_model = d_model
+        self.mem_slots = config.mem_slots
+        self.steps = config.steps
+        self.topk = config.topk
+        self.score_clip = config.score_clip
 
-        self.vocab_size = int(getattr(config, "vocab_size", 30522))
-        self.max_len = int(getattr(config, "max_len", 512))
+        # embeddings
+        self.token_emb = nn.Embedding(config.vocab_size, d_model)
+        self.pos_emb = nn.Embedding(config.max_len, d_model)
+        self.embed_dropout = nn.Dropout(config.dropout)
 
-        self.mem_slots = int(getattr(config, "mem_slots", 64))
-        self.steps = int(getattr(config, "steps", 4))
-        self.dropout_p = float(getattr(config, "dropout", 0.1))
+        # learned initial memory template
+        self.memory_init = nn.Parameter(
+            torch.randn(1, config.mem_slots, d_model) * config.init_scale
+        )
 
-        self.decay = float(getattr(config, "decay", 0.9))
-        self.gate = bool(getattr(config, "gate", False))
-        self.topk = int(getattr(config, "topk", 0))
-        self.score_clip = float(getattr(config, "score_clip", 20.0))
+        # token -> memory projections
+        self.q_proj = nn.Linear(d_model, d_model)
+        self.k_proj = nn.Linear(d_model, d_model)
+        self.v_proj = nn.Linear(d_model, d_model)
 
-        self.eps = 1e-9
+        # write path
+        self.write_proj = nn.Linear(d_model, d_model)
+        self.write_gate_proj = nn.Linear(d_model * 2, d_model)
 
-        # Embeddings
-        self.tok_emb = nn.Embedding(self.vocab_size, self.d_model)
-        self.pos_emb = nn.Embedding(self.max_len, self.d_model)
-        self.dropout = nn.Dropout(self.dropout_p)
+        # read path
+        self.read_q_proj = nn.Linear(d_model, d_model)
+        self.read_k_proj = nn.Linear(d_model, d_model)
+        self.read_v_proj = nn.Linear(d_model, d_model)
+        self.fuse_proj = nn.Linear(d_model * 2, d_model)
 
-        # Token -> memory projections
-        self.Wq = nn.Linear(self.d_model, self.d_model, bias=False)
-        self.Wk = nn.Linear(self.d_model, self.d_model, bias=False)
-        self.Wv = nn.Linear(self.d_model, self.d_model, bias=False)
+        # optional normalisation
+        self.token_ln = nn.LayerNorm(d_model)
+        self.memory_ln = nn.LayerNorm(d_model)
+        self.slot_ln = nn.LayerNorm(d_model)
 
-        # Optional gate
-        if self.gate:
-            self.gate_proj = nn.Linear(self.d_model, self.d_model)
+        # classifier head
+        self.out_dropout = nn.Dropout(config.dropout)
+        self.classifier = nn.Linear(d_model, config.num_classes)
 
-        # Memory init
-        self.mem_init = nn.Parameter(torch.randn(self.mem_slots, self.d_model) * 0.02)
+    def _expand_memory(self, batch_size: int, device: torch.device) -> torch.Tensor:
+        return self.memory_init.expand(batch_size, -1, -1).to(device)
 
-        # Output head
-        self.norm = nn.LayerNorm(self.d_model)
-        self.classifier = nn.Linear(self.d_model, self.num_classes)
-
-    def _embed(self, input_ids: torch.Tensor) -> torch.Tensor:
+    def _token_memory_scores(
+        self,
+        tokens: torch.Tensor,
+        memory: torch.Tensor
+    ) -> torch.Tensor:
         """
-        input_ids: (B, T)
-        returns: (B, T, d)
+        tokens: (B, T, D)
+        memory: (B, S, D)
+        returns scores: (B, T, S)
         """
-        B, T = input_ids.shape
+        q = self.q_proj(tokens)   # (B, T, D)
+        k = self.k_proj(memory)   # (B, S, D)
+        scores = torch.matmul(q, k.transpose(1, 2)) / math.sqrt(self.d_model)
+        if self.score_clip is not None and self.score_clip > 0:
+            scores = scores.clamp(min=-self.score_clip, max=self.score_clip)
+        return scores
 
-        if T > self.max_len:
-            input_ids = input_ids[:, :self.max_len]
-            T = input_ids.shape[1]
-
-        pos = torch.arange(T, device=input_ids.device).unsqueeze(0).expand(B, T)
-        x = self.tok_emb(input_ids) + self.pos_emb(pos)
-        return self.dropout(x)
-
-    def _safe_masked_softmax(self, scores: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-        """
-        scores: (B, T, S)
-        attention_mask: (B, T), 1 for valid token, 0 for padding
-        returns: (B, T, S)
-        """
-        if attention_mask is None:
-            w = F.softmax(scores, dim=-1)
-            w = torch.nan_to_num(w, nan=0.0, posinf=0.0, neginf=0.0)
-            denom = w.sum(dim=-1, keepdim=True).clamp_min(self.eps)
-            return w / denom
-
-        m = (attention_mask > 0).to(scores.dtype)  # (B, T)
-        valid_counts = m.sum(dim=1, keepdim=True)  # (B, 1)
-
-        mask3 = m.unsqueeze(-1)  # (B, T, 1)
-        masked_scores = scores.masked_fill(mask3 == 0, float("-inf"))
-
-        all_pad = (valid_counts.squeeze(1) == 0)  # (B,)
-        if all_pad.any():
-            masked_scores[all_pad] = scores[all_pad]
-
-        w = F.softmax(masked_scores, dim=-1)
-        w = torch.nan_to_num(w, nan=0.0, posinf=0.0, neginf=0.0)
-        denom = w.sum(dim=-1, keepdim=True).clamp_min(self.eps)
-        return w / denom
-
-    def _topk_binding(self, scores: torch.Tensor, k: int) -> torch.Tensor:
+    def _masked_binding(
+        self,
+        scores: torch.Tensor,
+        attention_mask: torch.Tensor
+    ) -> torch.Tensor:
         """
         scores: (B, T, S)
-        returns sparse softmax weights over top-k slots
+        attention_mask: (B, T)
+        returns weights: (B, T, S)
         """
-        k = max(1, min(k, scores.size(-1)))
-        vals, idx = torch.topk(scores, k=k, dim=-1)
-        sparse = torch.full_like(scores, float("-inf"))
-        sparse.scatter_(-1, idx, vals)
-        w = F.softmax(sparse, dim=-1)
-        w = torch.nan_to_num(w, nan=0.0, posinf=0.0, neginf=0.0)
-        denom = w.sum(dim=-1, keepdim=True).clamp_min(self.eps)
-        return w / denom
+        weights = sparse_topk_softmax(scores, self.topk)
+
+        token_mask = attention_mask.unsqueeze(-1).float()  # (B, T, 1)
+        weights = weights * token_mask
+
+        # renormalise over memory slots after masking padded tokens
+        denom = weights.sum(dim=-1, keepdim=True).clamp_min(1e-9)
+        weights = weights / denom
+        return weights
+
+    def _memory_write(
+        self,
+        tokens: torch.Tensor,
+        binding: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        tokens: (B, T, D)
+        binding: (B, T, S)
+        returns proposed write per slot: (B, S, D)
+        """
+        v = self.v_proj(tokens)  # (B, T, D)
+
+        # aggregate token values into slots
+        # (B, S, T) @ (B, T, D) -> (B, S, D)
+        write = torch.matmul(binding.transpose(1, 2), v)
+
+        # normalise by slot usage so high-traffic slots do not explode
+        slot_usage = binding.sum(dim=1).unsqueeze(-1).clamp_min(1e-6)  # (B, S, 1)
+        write = write / slot_usage
+
+        write = self.write_proj(write)
+        return write
+
+    def _update_memory(
+        self,
+        memory: torch.Tensor,
+        write: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        residual gated memory update
+        memory: (B, S, D)
+        write:  (B, S, D)
+        """
+        if self.config.use_write_gate:
+            gate_inp = torch.cat([memory, write], dim=-1)  # (B, S, 2D)
+            gate = torch.sigmoid(self.write_gate_proj(gate_inp))  # (B, S, D)
+        else:
+            gate = 1.0
+
+        delta = gate * write
+
+        if self.config.use_residual_update:
+            new_memory = memory + delta
+        else:
+            # fallback option if you want to compare against smoother updates
+            new_memory = self.config.decay * memory + (1.0 - self.config.decay) * delta
+
+        if self.config.use_slot_layernorm:
+            new_memory = self.slot_ln(new_memory)
+
+        if self.config.use_memory_norm:
+            new_memory = self.memory_ln(new_memory)
+
+        return new_memory
+
+    def _read_from_memory(
+        self,
+        tokens: torch.Tensor,
+        memory: torch.Tensor,
+        attention_mask: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        tokens: (B, T, D)
+        memory: (B, S, D)
+        returns contextualised tokens: (B, T, D)
+        """
+        q = self.read_q_proj(tokens)   # (B, T, D)
+        k = self.read_k_proj(memory)   # (B, S, D)
+        v = self.read_v_proj(memory)   # (B, S, D)
+
+        scores = torch.matmul(q, k.transpose(1, 2)) / math.sqrt(self.d_model)
+        if self.score_clip is not None and self.score_clip > 0:
+            scores = scores.clamp(min=-self.score_clip, max=self.score_clip)
+
+        read_weights = sparse_topk_softmax(scores, self.topk)  # (B, T, S)
+
+        token_mask = attention_mask.unsqueeze(-1).float()
+        read_weights = read_weights * token_mask
+        denom = read_weights.sum(dim=-1, keepdim=True).clamp_min(1e-9)
+        read_weights = read_weights / denom
+
+        context = torch.matmul(read_weights, v)  # (B, T, D)
+
+        fused = torch.cat([tokens, context], dim=-1)   # (B, T, 2D)
+        fused = self.fuse_proj(fused)                  # (B, T, D)
+        return fused
 
     def forward(
         self,
         input_ids: torch.Tensor,
-        attention_mask: torch.Tensor = None,
-        return_deltas: bool = False
-    ):
+        attention_mask: torch.Tensor
+    ) -> torch.Tensor:
         """
         input_ids: (B, T)
         attention_mask: (B, T)
         """
-        x = self._embed(input_ids)  # (B, T, d)
-        B, T, d = x.shape
+        bsz, seq_len = input_ids.shape
+        device = input_ids.device
 
-        # Initial memory per batch
-        M = self.mem_init.unsqueeze(0).expand(B, self.mem_slots, d).contiguous()  # (B, S, d)
+        pos_ids = torch.arange(seq_len, device=device).unsqueeze(0).expand(bsz, -1)
 
-        # Token projections computed once
-        Qt = self.Wq(x)  # (B, T, d)
-        Vt = self.Wv(x)  # (B, T, d)
+        tokens = self.token_emb(input_ids) + self.pos_emb(pos_ids)
+        tokens = self.embed_dropout(tokens)
+        tokens = self.token_ln(tokens)
 
-        delta_norms = []
+        memory = self._expand_memory(bsz, device)
 
-        # Settling loop
         for _ in range(self.steps):
-            Km = self.Wk(M)  # (B, S, d)
+            scores = self._token_memory_scores(tokens, memory)            # (B, T, S)
+            binding = self._masked_binding(scores, attention_mask)        # (B, T, S)
+            write = self._memory_write(tokens, binding)                   # (B, S, D)
+            memory = self._update_memory(memory, write)                   # (B, S, D)
 
-            # Token -> memory scores
-            scores = torch.einsum("btd,bsd->bts", Qt, Km) / math.sqrt(d)
-            scores = scores.clamp(-self.score_clip, self.score_clip)
-
-            if self.topk > 0:
-                W = self._topk_binding(scores, self.topk)
-            else:
-                W = self._safe_masked_softmax(scores, attention_mask)
-
-            # Write token values into memory slots
-            write = torch.einsum("bts,btd->bsd", W, Vt)  # (B, S, d)
-
-            if self.gate:
-                g = torch.sigmoid(self.gate_proj(M))
-                write = g * write
-
-            M_new = self.decay * M + (1.0 - self.decay) * write
-            M_new = torch.clamp(M_new, -50.0, 50.0)
-
-            delta = (M_new - M).norm(dim=-1).mean()
-            delta = torch.nan_to_num(delta, nan=0.0, posinf=0.0, neginf=0.0)
-            delta_norms.append(delta)
-
-            M = M_new
-
-        # Final read from memory back to token context
-        Km = self.Wk(M)
-        scores = torch.einsum("btd,bsd->bts", Qt, Km) / math.sqrt(d)
-        scores = scores.clamp(-self.score_clip, self.score_clip)
-
-        if self.topk > 0:
-            W = self._topk_binding(scores, self.topk)
-        else:
-            W = self._safe_masked_softmax(scores, attention_mask)
-
-        token_context = torch.einsum("bts,bsd->btd", W, M)  # (B, T, d)
-
-        # Masked mean pooling
-        if attention_mask is None:
-            pooled = token_context.mean(dim=1)
-        else:
-            m = (attention_mask > 0).to(token_context.dtype).unsqueeze(-1)  # (B, T, 1)
-            pooled = (token_context * m).sum(dim=1) / m.sum(dim=1).clamp_min(1.0)
-
-        pooled = self.norm(pooled)
+        tokens_ctx = self._read_from_memory(tokens, memory, attention_mask)
+        pooled = masked_mean(tokens_ctx, attention_mask)
+        pooled = self.out_dropout(pooled)
         logits = self.classifier(pooled)
-        logits = torch.nan_to_num(logits, nan=0.0, posinf=0.0, neginf=0.0)
-
-        if return_deltas:
-            if len(delta_norms) == 0:
-                return logits, torch.zeros(1, device=logits.device)
-            return logits, torch.stack(delta_norms).detach()
-
         return logits
