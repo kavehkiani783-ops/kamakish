@@ -88,9 +88,20 @@ def build_model(args, vocab_size, num_classes, pad_id):
 
 def build_output_filename(args):
     """
-    Keep filenames consistent with what the runners expect.
+    Build informative filenames so TMR/TMR-v2 ablations do not overwrite each other.
     """
-    return f"{args.model}_{args.dataset}_seed{args.seed}.json"
+    parts = [args.model, args.dataset, f"seed{args.seed}"]
+
+    if args.model.lower() in {"tmr", "tmr_v2"}:
+        steps = 0 if args.tmr_no_settle else args.tmr_steps
+        parts.extend([
+            f"steps{steps}",
+            f"slots{args.tmr_slots}",
+            f"topk{args.tmr_topk}",
+            f"gate{int(args.tmr_gate)}",
+        ])
+
+    return "_".join(parts) + ".json"
 
 
 def main():
