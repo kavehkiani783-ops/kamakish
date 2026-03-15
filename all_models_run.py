@@ -27,21 +27,21 @@ def main():
         ("transformer_base", []),
     ]
 
-    NubNet_v1_args = [
-        "--NubNet_slots", "32",
-        "--NubNet_steps", "1",
-        "--NubNet_topk", "0",
-        "--NubNet_dropout", "0.1",
-        "--NubNet_score_clip", "20.0",
+    HubNet_v1_args = [
+        "--HubNet_slots", "32",
+        "--HubNet_steps", "1",
+        "--HubNet_topk", "0",
+        "--HubNet_dropout", "0.1",
+        "--HubNet_score_clip", "20.0",
     ]
 
-    NubNet_v2_args = [
-        "--NubNet_slots", "32",
-        "--NubNet_steps", "4",
-        "--NubNet_topk", "0",
-        "--NubNet_dropout", "0.1",
-        "--NubNet_score_clip", "20.0",
-        "--NubNet_gate",
+    HubNet_v2_args = [
+        "--HubNet_slots", "32",
+        "--HubNet_steps", "4",
+        "--HubNet_topk", "0",
+        "--HubNet_dropout", "0.1",
+        "--HubNet_score_clip", "20.0",
+        "--HubNet_gate",
     ]
 
     for dataset in datasets:
@@ -60,20 +60,20 @@ def main():
             cmd = [
                 sys.executable, "main.py",
                 "--dataset", dataset,
-                "--model", "NubNet",
+                "--model", "HubNet",
                 "--seed", str(seed),
                 *base_args,
-                *NubNet_v1_args,
+                *HubNet_v1_args,
             ]
             run_cmd(cmd)
 
             cmd = [
                 sys.executable, "main.py",
                 "--dataset", dataset,
-                "--model", "NubNet_v2",
+                "--model", "HubNet_v2",
                 "--seed", str(seed),
                 *base_args,
-                *NubNet_v2_args,
+                *HubNet_v2_args,
             ]
             run_cmd(cmd)
 
