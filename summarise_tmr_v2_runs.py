@@ -30,13 +30,24 @@ def extract_from_filename(path):
     }
 
 
-def safe_get(dct, *keys, default=None):
-    cur = dct
-    for k in keys:
-        if not isinstance(cur, dict) or k not in cur:
-            return default
-        cur = cur[k]
-    return cur
+def find_first_key(obj, target_keys):
+    """
+    Recursively search nested dict/list structures for the first matching key.
+    """
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in target_keys and isinstance(v, (int, float)):
+                return v
+        for v in obj.values():
+            found = find_first_key(v, target_keys)
+            if found is not None:
+                return found
+    elif isinstance(obj, list):
+        for item in obj:
+            found = find_first_key(item, target_keys)
+            if found is not None:
+                return found
+    return None
 
 
 def mean(xs):
@@ -62,6 +73,44 @@ def main():
 
         meta = extract_from_filename(path)
 
+        val_acc = find_first_key(
+            data,
+            {
+                "val_accuracy",
+                "best_val_acc",
+                "best_val_accuracy",
+                "val_acc",
+            },
+        )
+
+        test_acc = find_first_key(
+            data,
+            {
+                "test_accuracy",
+                "test_acc",
+                "accuracy",
+            },
+        )
+
+        epoch_time = find_first_key(
+            data,
+            {
+                "epoch_time_min",
+                "avg_epoch_time_min",
+                "epoch_time",
+                "avg_epoch_time",
+            },
+        )
+
+        num_parameters = find_first_key(
+            data,
+            {
+                "num_parameters",
+                "params",
+                "parameter_count",
+            },
+        )
+
         row = {
             "file": os.path.basename(path),
             "dataset": meta["dataset"],
@@ -70,27 +119,10 @@ def main():
             "slots": meta["slots"],
             "topk": meta["topk"],
             "gate": meta["gate"],
-            "val_accuracy": (
-                safe_get(data, "val", "accuracy")
-                or safe_get(data, "val_metrics", "accuracy")
-                or safe_get(data, "best_val", "accuracy")
-                or safe_get(data, "val_accuracy")
-            ),
-            "test_accuracy": (
-                safe_get(data, "test", "accuracy")
-                or safe_get(data, "test_metrics", "accuracy")
-                or safe_get(data, "accuracy")
-                or safe_get(data, "test_accuracy")
-            ),
-            "epoch_time_min": (
-                safe_get(data, "epoch_time_min")
-                or safe_get(data, "avg_epoch_time_min")
-                or safe_get(data, "epoch_time")
-            ),
-            "num_parameters": (
-                safe_get(data, "num_parameters")
-                or safe_get(data, "params")
-            ),
+            "val_accuracy": val_acc,
+            "test_accuracy": test_acc,
+            "epoch_time_min": epoch_time,
+            "num_parameters": num_parameters,
         }
         rows.append(row)
 
