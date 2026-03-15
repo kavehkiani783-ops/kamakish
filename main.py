@@ -18,15 +18,15 @@ print("MAIN STARTED")
 
 def normalise_model_name(name: str) -> str:
     """
-    Make model selection case-insensitive and allow a few legacy aliases.
+    Make model selection case-insensitive and allow legacy aliases.
     """
     name = name.strip().lower()
 
     aliases = {
         "hubnet": "hubnet",
         "hubnet_v2": "hubnet_v2",
-        "tmr": "hubnet",          # legacy alias
-        "tmr_v2": "hubnet_v2",    # legacy alias
+        "tmr": "hubnet",
+        "tmr_v2": "hubnet_v2",
         "meanpool": "meanpool",
         "bilstm": "bilstm",
         "tiny_transformer": "tiny_transformer",
@@ -56,7 +56,7 @@ def build_model(args, vocab_size, num_classes, pad_id):
             dropout=args.HubNet_dropout,
             score_clip=args.HubNet_score_clip,
         )
-        return HubNetModel(args.d_model, num_classes, cfg)
+        return HUBNETModel(args.d_model, num_classes, cfg)
 
     if name == "hubnet_v2":
         cfg = HUBNETConfig(
@@ -137,9 +137,9 @@ def main():
         type=str,
         default="hubnet",
         help=(
-            "Model name. Supported: hubnet, hubnet_v2, meanpool, bilstm, "
+            "Supported: hubnet, hubnet_v2, meanpool, bilstm, "
             "tiny_transformer, transformer_base. "
-            "Also accepts legacy aliases: tmr, tmr_v2."
+            "Legacy aliases tmr and tmr_v2 are also accepted."
         ),
     )
 
