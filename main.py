@@ -8,8 +8,8 @@ import torch
 from data.datasets import get_dataset
 from training.runner import train_and_evaluate
 
-from models.NubNet_config import NUBNETConfig
-from models.NubNet_block import NUBNETModel, NUBNETBlockV2
+from models.HubNet_config import HUBNETConfig
+from models.HubNet_block import HUBNETModel, HUBNETBlockV2
 from models.simple_models import MeanPool, BiLSTM
 from models.transformer_models import TinyTransformer, TransformerBase
 
@@ -19,37 +19,37 @@ print("MAIN STARTED")
 def build_model(args, vocab_size, num_classes, pad_id):
     name = args.model.lower()
 
-    if name == "NubNet":
-        cfg = NUBNETConfig(
+    if name == "HubNet":
+        cfg = HUBNETConfig(
             vocab_size=vocab_size,
             num_classes=num_classes,
             max_len=args.max_len,
             d_model=args.d_model,
-            mem_slots=args.NubNet_slots,
-            steps=0 if args.NubNet_no_settle else args.NubNet_steps,
-            decay=args.NubNet_decay,
-            gate=args.NubNet_gate,
-            topk=args.NubNet_topk,
-            dropout=args.NubNet_dropout,
-            score_clip=args.NubNet_score_clip,
+            mem_slots=args.HubNet_slots,
+            steps=0 if args.HubNet_no_settle else args.HubNet_steps,
+            decay=args.HubNet_decay,
+            gate=args.HubNet_gate,
+            topk=args.HubNet_topk,
+            dropout=args.HubNet_dropout,
+            score_clip=args.HubNet_score_clip,
         )
-        return NUBNETModel(args.d_model, num_classes, cfg)
+        return HUBNETModel(args.d_model, num_classes, cfg)
 
-    if name == "NubNet_v2":
-        cfg = NUBNETConfig(
+    if name == "HubNet_v2":
+        cfg = HUBNETConfig(
             vocab_size=vocab_size,
             num_classes=num_classes,
             max_len=args.max_len,
             d_model=args.d_model,
-            mem_slots=args.NubNet_slots,
-            steps=0 if args.NubNet_no_settle else args.NubNet_steps,
-            decay=args.NubNet_decay,
-            gate=args.NubNet_gate,
-            topk=args.NubNet_topk,
-            dropout=args.NubNet_dropout,
-            score_clip=args.NubNet_score_clip,
+            mem_slots=args.HubNet_slots,
+            steps=0 if args.HubNet_no_settle else args.HubNet_steps,
+            decay=args.HubNet_decay,
+            gate=args.HubNet_gate,
+            topk=args.HubNet_topk,
+            dropout=args.HubNet_dropout,
+            score_clip=args.HubNet_score_clip,
         )
-        return NUBNETBlockV2(cfg)
+        return HUBNETBlockV2(cfg)
 
     if name == "meanpool":
         return MeanPool(
@@ -88,17 +88,17 @@ def build_model(args, vocab_size, num_classes, pad_id):
 
 def build_output_filename(args):
     """
-    Build informative filenames so NUBNET/NUBNET-v2 ablations do not overwrite each other.
+    Build informative filenames so HUBNET/HUBNET-v2 ablations do not overwrite each other.
     """
     parts = [args.model, args.dataset, f"seed{args.seed}"]
 
-    if args.model.lower() in {"NubNet", "NubNet_v2"}:
-        steps = 0 if args.NubNet_no_settle else args.NubNet_steps
+    if args.model.lower() in {"HubNet", "HubNet_v2"}:
+        steps = 0 if args.HubNet_no_settle else args.HubNet_steps
         parts.extend([
             f"steps{steps}",
-            f"slots{args.NubNet_slots}",
-            f"topk{args.NubNet_topk}",
-            f"gate{int(args.NubNet_gate)}",
+            f"slots{args.HubNet_slots}",
+            f"topk{args.HubNet_topk}",
+            f"gate{int(args.HubNet_gate)}",
         ])
 
     return "_".join(parts) + ".json"
@@ -112,14 +112,14 @@ def main():
         "--model",
         type=str,
         choices=[
-            "NubNet",
-            "NubNet_v2",
+            "HubNet",
+            "HubNet_v2",
             "meanpool",
             "bilstm",
             "tiny_transformer",
             "transformer_base",
         ],
-        default="NubNet",
+        default="HubNet",
     )
 
     parser.add_argument("--epochs", type=int, default=3)
@@ -132,15 +132,15 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output_dir", type=str, default="results")
 
-    # NUBNET controls
-    parser.add_argument("--NubNet_steps", type=int, default=4)
-    parser.add_argument("--NubNet_slots", type=int, default=64)
-    parser.add_argument("--NubNet_decay", type=float, default=0.9)
-    parser.add_argument("--NubNet_gate", action="store_true")
-    parser.add_argument("--NubNet_topk", type=int, default=0)
-    parser.add_argument("--NubNet_no_settle", action="store_true")
-    parser.add_argument("--NubNet_dropout", type=float, default=0.1)
-    parser.add_argument("--NubNet_score_clip", type=float, default=20.0)
+    # HUBNET controls
+    parser.add_argument("--HubNet_steps", type=int, default=4)
+    parser.add_argument("--HubNet_slots", type=int, default=64)
+    parser.add_argument("--HubNet_decay", type=float, default=0.9)
+    parser.add_argument("--HubNet_gate", action="store_true")
+    parser.add_argument("--HubNet_topk", type=int, default=0)
+    parser.add_argument("--HubNet_no_settle", action="store_true")
+    parser.add_argument("--HubNet_dropout", type=float, default=0.1)
+    parser.add_argument("--HubNet_score_clip", type=float, default=20.0)
 
     args = parser.parse_args()
 
@@ -153,13 +153,13 @@ def main():
     print(f"Model: {args.model} | d_model={args.d_model} | lr={args.lr}")
     print(f"Dataset: {args.dataset} | max_len={args.max_len} | batch_size={args.batch_size}")
 
-    if args.model.lower() in {"NubNet", "NubNet_v2"}:
+    if args.model.lower() in {"HubNet", "HubNet_v2"}:
         print(
-            f"NUBNET config | slots={args.NubNet_slots} | "
-            f"steps={0 if args.NubNet_no_settle else args.NubNet_steps} | "
-            f"decay={args.NubNet_decay} | gate={args.NubNet_gate} | "
-            f"topk={args.NubNet_topk} | dropout={args.NubNet_dropout} | "
-            f"score_clip={args.NubNet_score_clip}"
+            f"HUBNET config | slots={args.HubNet_slots} | "
+            f"steps={0 if args.HubNet_no_settle else args.HubNet_steps} | "
+            f"decay={args.HubNet_decay} | gate={args.HubNet_gate} | "
+            f"topk={args.HubNet_topk} | dropout={args.HubNet_dropout} | "
+            f"score_clip={args.HubNet_score_clip}"
         )
 
     print("-" * 70)
