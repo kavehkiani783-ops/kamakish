@@ -11,15 +11,15 @@ def run_cmd(cmd):
 
 def main():
     dataset = "listops_synth"
-    model = "tmr_v2"
+    model = "NubNet_v2"
     epochs = 3
     batch_size = 64
     max_len = 512
     d_model = 128
-    tmr_slots = 32
-    tmr_topk = 0
-    tmr_dropout = 0.1
-    tmr_score_clip = 20.0
+    NubNet_slots = 32
+    NubNet_topk = 0
+    NubNet_dropout = 0.1
+    NubNet_score_clip = 20.0
 
     seeds = [42, 43, 44]
     steps_list = [1, 2, 4]
@@ -35,16 +35,16 @@ def main():
                 "--max_len", str(max_len),
                 "--seed", str(seed),
                 "--d_model", str(d_model),
-                "--tmr_slots", str(tmr_slots),
-                "--tmr_steps", str(steps),
-                "--tmr_topk", str(tmr_topk),
-                "--tmr_dropout", str(tmr_dropout),
-                "--tmr_score_clip", str(tmr_score_clip),
-                "--tmr_gate",
+                "--NubNet_slots", str(NubNet_slots),
+                "--NubNet_steps", str(steps),
+                "--NubNet_topk", str(NubNet_topk),
+                "--NubNet_dropout", str(NubNet_dropout),
+                "--NubNet_score_clip", str(NubNet_score_clip),
+                "--NubNet_gate",
             ]
             run_cmd(cmd)
 
-    print("\nAll TMR-v2 step/seed runs completed.")
+    print("\nAll NUBNET-v2 step/seed runs completed.")
 
 
 if __name__ == "__main__":
