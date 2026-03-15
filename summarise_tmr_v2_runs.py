@@ -3,6 +3,7 @@ import glob
 import os
 import csv
 import re
+from statistics import mean
 
 RESULTS_DIR = "results"
 PATTERN = os.path.join(
@@ -20,28 +21,6 @@ def parse_filename(fname):
     return seed, steps, slots, topk, gate
 
 
-def find_first_key(obj, candidate_keys):
-    """
-    Recursively search dict/list structures for the first matching key.
-    """
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if k in candidate_keys:
-                return v
-        for v in obj.values():
-            found = find_first_key(v, candidate_keys)
-            if found is not None:
-                return found
-
-    elif isinstance(obj, list):
-        for item in obj:
-            found = find_first_key(item, candidate_keys)
-            if found is not None:
-                return found
-
-    return None
-
-
 def main():
     files = sorted(glob.glob(PATTERN))
 
@@ -57,57 +36,23 @@ def main():
 
         seed, steps, slots, topk, gate = parse_filename(os.path.basename(fpath))
 
-        test_acc = find_first_key(
-            data,
-            {
-                "test_acc",
-                "test_accuracy",
-                "accuracy_test",
-            }
-        )
+        best_val_acc = data.get("best_val_accuracy", None)
 
-        # Also try nested "accuracy" only under test-like containers
-        if test_acc is None and isinstance(data, dict):
-            for k, v in data.items():
-                if "test" in k.lower() and isinstance(v, dict):
-                    if "accuracy" in v:
-                        test_acc = v["accuracy"]
-                        break
+        best_metrics = data.get("best_metrics", {})
+        val_metrics = best_metrics.get("val", {})
+        test_metrics = best_metrics.get("test", {})
 
-        val_acc = find_first_key(
-            data,
-            {
-                "val_acc",
-                "val_accuracy",
-                "accuracy_val",
-            }
-        )
+        val_acc = val_metrics.get("accuracy", None)
+        test_acc = test_metrics.get("accuracy", None)
 
-        if val_acc is None and isinstance(data, dict):
-            for k, v in data.items():
-                if "val" in k.lower() and isinstance(v, dict):
-                    if "accuracy" in v:
-                        val_acc = v["accuracy"]
-                        break
+        total_minutes = data.get("total_minutes", None)
 
-        epoch_time = find_first_key(
-            data,
-            {
-                "epoch_time",
-                "epoch_time_min",
-                "avg_epoch_time",
-                "avg_epoch_time_min",
-            }
-        )
-
-        num_parameters = find_first_key(
-            data,
-            {
-                "num_parameters",
-                "params",
-                "parameter_count",
-            }
-        )
+        history = data.get("history", {})
+        epochs = history.get("epochs", [])
+        if epochs:
+            last_epoch_time = epochs[-1].get("epoch_time_min", None)
+        else:
+            last_epoch_time = None
 
         rows.append({
             "file": os.path.basename(fpath),
@@ -116,10 +61,11 @@ def main():
             "slots": slots,
             "topk": topk,
             "gate": gate,
+            "best_val_accuracy": best_val_acc,
             "val_accuracy": val_acc,
             "test_accuracy": test_acc,
-            "epoch_time": epoch_time,
-            "num_parameters": num_parameters,
+            "last_epoch_time_min": last_epoch_time,
+            "total_minutes": total_minutes,
         })
 
     rows.sort(key=lambda r: (r["steps"], r["seed"]))
@@ -135,8 +81,24 @@ def main():
     for r in rows:
         print(
             f"seed={r['seed']} | steps={r['steps']} | "
-            f"test_acc={r['test_accuracy']} | val_acc={r['val_accuracy']} | "
-            f"epoch_time={r['epoch_time']}"
+            f"val_acc={r['val_accuracy']:.4f} | "
+            f"test_acc={r['test_accuracy']:.4f} | "
+            f"epoch_time={r['last_epoch_time_min']:.4f}"
+        )
+
+    by_steps = {}
+    for r in rows:
+        by_steps.setdefault(r["steps"], []).append(r)
+
+    print("\nAverages by steps:")
+    for steps in sorted(by_steps):
+        group = by_steps[steps]
+        avg_val = mean(r["val_accuracy"] for r in group if r["val_accuracy"] is not None)
+        avg_test = mean(r["test_accuracy"] for r in group if r["test_accuracy"] is not None)
+        avg_epoch = mean(r["last_epoch_time_min"] for r in group if r["last_epoch_time_min"] is not None)
+        print(
+            f"steps={steps} | avg_val_acc={avg_val:.4f} | "
+            f"avg_test_acc={avg_test:.4f} | avg_epoch_time={avg_epoch:.4f}"
         )
 
 
