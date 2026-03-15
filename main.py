@@ -22,7 +22,9 @@ def build_model(args, vocab_size, num_classes, pad_id):
     if name == "tmr":
         cfg = TMRConfig(
             vocab_size=vocab_size,
+            num_classes=num_classes,
             max_len=args.max_len,
+            d_model=args.d_model,
             mem_slots=args.tmr_slots,
             steps=0 if args.tmr_no_settle else args.tmr_steps,
             decay=args.tmr_decay,
