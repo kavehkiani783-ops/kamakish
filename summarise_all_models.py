@@ -5,40 +5,26 @@ import re
 import csv
 from collections import defaultdict
 
-
 RESULTS_DIR = "results"
 PATTERN = os.path.join(RESULTS_DIR, "*.json")
 
-
-VALID_MODELS = {
-    "meanpool",
-    "bilstm",
-    "tiny_transformer",
-    "transformer_base",
-    "tmr",
-    "tmr_v2",
-}
-
+FINAL_SEEDS = {42, 43, 44}
+BASELINE_MODELS = {"meanpool", "bilstm", "tiny_transformer", "transformer_base"}
 
 def parse_filename(name):
-    """
-    Supports filenames like:
-      meanpool_imdb_seed42.json
-      tmr_imdb_seed42_steps1_slots32_topk0_gate0.json
-      tmr_v2_listops_synth_seed44_steps4_slots32_topk0_gate1.json
-    """
     stem = name[:-5] if name.endswith(".json") else name
 
     model = None
-    dataset = None
-    seed = None
-    steps = None
-    slots = None
-    topk = None
-    gate = None
+    valid_models = [
+        "transformer_base",
+        "tiny_transformer",
+        "meanpool",
+        "bilstm",
+        "tmr_v2",
+        "tmr",
+    ]
 
-    # model
-    for candidate in sorted(VALID_MODELS, key=len, reverse=True):
+    for candidate in valid_models:
         prefix = candidate + "_"
         if stem.startswith(prefix):
             model = candidate
@@ -47,7 +33,6 @@ def parse_filename(name):
     else:
         return None
 
-    # dataset and rest
     m = re.match(r"(.+?)_seed(\d+)(.*)", rest)
     if not m:
         return None
@@ -56,31 +41,22 @@ def parse_filename(name):
     seed = int(m.group(2))
     suffix = m.group(3)
 
-    m_steps = re.search(r"_steps(\d+)", suffix)
-    m_slots = re.search(r"_slots(\d+)", suffix)
-    m_topk = re.search(r"_topk(\d+)", suffix)
-    m_gate = re.search(r"_gate(\d+)", suffix)
-
-    steps = int(m_steps.group(1)) if m_steps else None
-    slots = int(m_slots.group(1)) if m_slots else None
-    topk = int(m_topk.group(1)) if m_topk else None
-    gate = int(m_gate.group(1)) if m_gate else None
+    def extract_int(pattern):
+        mm = re.search(pattern, suffix)
+        return int(mm.group(1)) if mm else None
 
     return {
         "model": model,
         "dataset": dataset,
         "seed": seed,
-        "steps": steps,
-        "slots": slots,
-        "topk": topk,
-        "gate": gate,
+        "steps": extract_int(r"_steps(\d+)"),
+        "slots": extract_int(r"_slots(\d+)"),
+        "topk": extract_int(r"_topk(\d+)"),
+        "gate": extract_int(r"_gate(\d+)"),
+        "file": name,
     }
 
-
 def find_first_key(obj, target_keys):
-    """
-    Recursively search nested dict/list structures for the first matching scalar key.
-    """
     if isinstance(obj, dict):
         for k, v in obj.items():
             if k in target_keys and isinstance(v, (int, float)):
@@ -96,84 +72,79 @@ def find_first_key(obj, target_keys):
                 return found
     return None
 
-
 def mean(xs):
     xs = [x for x in xs if x is not None]
     return sum(xs) / len(xs) if xs else None
 
-
 def fmt(x):
     return f"{x:.4f}" if isinstance(x, (int, float)) else "NA"
 
+def keep_row(meta):
+    if meta["seed"] not in FINAL_SEEDS:
+        return False
+
+    if meta["model"] in BASELINE_MODELS:
+        return True
+
+    if meta["model"] == "tmr":
+        return (
+            meta["steps"] == 1 and
+            meta["slots"] == 32 and
+            meta["topk"] == 0 and
+            meta["gate"] == 0
+        )
+
+    if meta["model"] == "tmr_v2":
+        return (
+            meta["steps"] == 4 and
+            meta["slots"] == 32 and
+            meta["topk"] == 0 and
+            meta["gate"] == 1
+        )
+
+    return False
 
 def main():
-    files = sorted(glob.glob(PATTERN))
     rows = []
 
-    for path in files:
+    for path in sorted(glob.glob(PATTERN)):
         name = os.path.basename(path)
         meta = parse_filename(name)
         if meta is None:
             continue
 
+        if not keep_row(meta):
+            continue
+
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        val_acc = find_first_key(
-            data,
-            {"val_accuracy", "best_val_acc", "best_val_accuracy", "val_acc"},
-        )
+        val_acc = find_first_key(data, {"val_accuracy", "best_val_acc", "best_val_accuracy", "val_acc"})
+        test_acc = find_first_key(data, {"test_accuracy", "test_acc", "accuracy"})
+        epoch_time = find_first_key(data, {"epoch_time_min", "avg_epoch_time_min", "epoch_time", "avg_epoch_time"})
+        num_parameters = find_first_key(data, {"num_parameters", "params", "parameter_count"})
 
-        test_acc = find_first_key(
-            data,
-            {"test_accuracy", "test_acc", "accuracy"},
-        )
+        rows.append({
+            "file": name,
+            "dataset": meta["dataset"],
+            "model": meta["model"],
+            "seed": meta["seed"],
+            "steps": meta["steps"],
+            "slots": meta["slots"],
+            "topk": meta["topk"],
+            "gate": meta["gate"],
+            "val_accuracy": val_acc,
+            "test_accuracy": test_acc,
+            "epoch_time_min": epoch_time,
+            "num_parameters": num_parameters,
+        })
 
-        epoch_time = find_first_key(
-            data,
-            {"epoch_time_min", "avg_epoch_time_min", "epoch_time", "avg_epoch_time"},
-        )
-
-        num_parameters = find_first_key(
-            data,
-            {"num_parameters", "params", "parameter_count"},
-        )
-
-        rows.append(
-            {
-                "file": name,
-                "model": meta["model"],
-                "dataset": meta["dataset"],
-                "seed": meta["seed"],
-                "steps": meta["steps"],
-                "slots": meta["slots"],
-                "topk": meta["topk"],
-                "gate": meta["gate"],
-                "val_accuracy": val_acc,
-                "test_accuracy": test_acc,
-                "epoch_time_min": epoch_time,
-                "num_parameters": num_parameters,
-            }
-        )
-
-    if not rows:
-        print("No matching result files found.")
-        return
-
-    out_csv = os.path.join(RESULTS_DIR, "summary_all_models.csv")
+    out_csv = os.path.join(RESULTS_DIR, "summary_final_models.csv")
     fieldnames = [
-        "file",
-        "model",
-        "dataset",
-        "seed",
-        "steps",
-        "slots",
-        "topk",
-        "gate",
-        "val_accuracy",
-        "test_accuracy",
-        "epoch_time_min",
-        "num_parameters",
+        "file", "dataset", "model", "seed",
+        "steps", "slots", "topk", "gate",
+        "val_accuracy", "test_accuracy",
+        "epoch_time_min", "num_parameters"
     ]
 
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
@@ -204,27 +175,18 @@ def main():
         grouped[(row["dataset"], row["model"])].append(row)
 
     print("\nAverages by dataset and model:")
-    for (dataset, model) in sorted(grouped.keys(), key=lambda x: (x[0], x[1])):
+    for (dataset, model) in sorted(grouped.keys()):
         grp = grouped[(dataset, model)]
         avg_val = mean([r["val_accuracy"] for r in grp])
         avg_test = mean([r["test_accuracy"] for r in grp])
         avg_time = mean([r["epoch_time_min"] for r in grp])
 
-        # show TMR config if same across grouped rows
-        steps_vals = sorted({r["steps"] for r in grp if r["steps"] is not None})
-        slots_vals = sorted({r["slots"] for r in grp if r["slots"] is not None})
-        topk_vals = sorted({r["topk"] for r in grp if r["topk"] is not None})
-        gate_vals = sorted({r["gate"] for r in grp if r["gate"] is not None})
-
         config_bits = []
-        if steps_vals:
-            config_bits.append(f"steps={steps_vals}")
-        if slots_vals:
-            config_bits.append(f"slots={slots_vals}")
-        if topk_vals:
-            config_bits.append(f"topk={topk_vals}")
-        if gate_vals:
-            config_bits.append(f"gate={gate_vals}")
+        if model in {"tmr", "tmr_v2"}:
+            config_bits.append(f"steps={grp[0]['steps']}")
+            config_bits.append(f"slots={grp[0]['slots']}")
+            config_bits.append(f"topk={grp[0]['topk']}")
+            config_bits.append(f"gate={grp[0]['gate']}")
 
         config_str = " | " + " | ".join(config_bits) if config_bits else ""
 
@@ -233,7 +195,6 @@ def main():
             f"avg_val_acc={fmt(avg_val)} | avg_test_acc={fmt(avg_test)} | "
             f"avg_epoch_time={fmt(avg_time)}"
         )
-
 
 if __name__ == "__main__":
     main()
