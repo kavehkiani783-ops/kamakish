@@ -4,77 +4,139 @@ import os
 import csv
 import re
 
-
 RESULTS_DIR = "results"
-PATTERN = os.path.join(RESULTS_DIR, "tmr_v2_listops_synth_seed*_steps*_slots*_topk*_gate1.json")
+PATTERN = os.path.join(
+    RESULTS_DIR,
+    "tmr_v2_listops_synth_seed*_steps*_slots*_topk*_gate1.json"
+)
 
 
 def parse_filename(fname):
     seed = int(re.search(r"seed(\d+)", fname).group(1))
     steps = int(re.search(r"steps(\d+)", fname).group(1))
     slots = int(re.search(r"slots(\d+)", fname).group(1))
-    return seed, steps, slots
+    topk = int(re.search(r"topk(\d+)", fname).group(1))
+    gate = int(re.search(r"gate(\d+)", fname).group(1))
+    return seed, steps, slots, topk, gate
 
 
-def extract_metrics(data):
+def find_first_key(obj, candidate_keys):
     """
-    Try several possible result structures.
+    Recursively search dict/list structures for the first matching key.
     """
-    if "test" in data and "accuracy" in data["test"]:
-        test_acc = data["test"]["accuracy"]
-    elif "test_metrics" in data and "accuracy" in data["test_metrics"]:
-        test_acc = data["test_metrics"]["accuracy"]
-    elif "test_acc" in data:
-        test_acc = data["test_acc"]
-    else:
-        test_acc = None
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in candidate_keys:
+                return v
+        for v in obj.values():
+            found = find_first_key(v, candidate_keys)
+            if found is not None:
+                return found
 
-    if "epoch_time" in data:
-        epoch_time = data["epoch_time"]
-    elif "avg_epoch_time" in data:
-        epoch_time = data["avg_epoch_time"]
-    else:
-        epoch_time = None
+    elif isinstance(obj, list):
+        for item in obj:
+            found = find_first_key(item, candidate_keys)
+            if found is not None:
+                return found
 
-    return test_acc, epoch_time
+    return None
 
 
 def main():
     files = sorted(glob.glob(PATTERN))
 
+    if not files:
+        print("No matching result files found.")
+        return
+
     rows = []
 
-    for f in files:
-        with open(f) as fp:
-            data = json.load(fp)
+    for fpath in files:
+        with open(fpath, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
-        seed, steps, slots = parse_filename(f)
-        test_acc, epoch_time = extract_metrics(data)
+        seed, steps, slots, topk, gate = parse_filename(os.path.basename(fpath))
+
+        test_acc = find_first_key(
+            data,
+            {
+                "test_acc",
+                "test_accuracy",
+                "accuracy_test",
+            }
+        )
+
+        # Also try nested "accuracy" only under test-like containers
+        if test_acc is None and isinstance(data, dict):
+            for k, v in data.items():
+                if "test" in k.lower() and isinstance(v, dict):
+                    if "accuracy" in v:
+                        test_acc = v["accuracy"]
+                        break
+
+        val_acc = find_first_key(
+            data,
+            {
+                "val_acc",
+                "val_accuracy",
+                "accuracy_val",
+            }
+        )
+
+        if val_acc is None and isinstance(data, dict):
+            for k, v in data.items():
+                if "val" in k.lower() and isinstance(v, dict):
+                    if "accuracy" in v:
+                        val_acc = v["accuracy"]
+                        break
+
+        epoch_time = find_first_key(
+            data,
+            {
+                "epoch_time",
+                "epoch_time_min",
+                "avg_epoch_time",
+                "avg_epoch_time_min",
+            }
+        )
+
+        num_parameters = find_first_key(
+            data,
+            {
+                "num_parameters",
+                "params",
+                "parameter_count",
+            }
+        )
 
         rows.append({
+            "file": os.path.basename(fpath),
             "seed": seed,
             "steps": steps,
             "slots": slots,
+            "topk": topk,
+            "gate": gate,
+            "val_accuracy": val_acc,
             "test_accuracy": test_acc,
             "epoch_time": epoch_time,
+            "num_parameters": num_parameters,
         })
 
-    rows.sort(key=lambda x: (x["steps"], x["seed"]))
+    rows.sort(key=lambda r: (r["steps"], r["seed"]))
 
     out_csv = os.path.join(RESULTS_DIR, "summary_tmr_v2_steps_seeds.csv")
-
-    with open(out_csv, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+    with open(out_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)
 
-    print("\nSaved summary to:", out_csv)
-
+    print("Saved summary to:", out_csv)
     print("\nSummary:")
     for r in rows:
         print(
             f"seed={r['seed']} | steps={r['steps']} | "
-            f"test_acc={r['test_accuracy']}"
+            f"test_acc={r['test_accuracy']} | val_acc={r['val_accuracy']} | "
+            f"epoch_time={r['epoch_time']}"
         )
 
 
