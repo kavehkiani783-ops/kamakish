@@ -8,8 +8,8 @@ import torch
 from data.datasets import get_dataset
 from training.runner import train_and_evaluate
 
-from models.tmr_config import TMRConfig
-from models.tmr_block import TMRModel, TMRBlockV2
+from models.NubNet_config import NUBNETConfig
+from models.NubNet_block import NUBNETModel, NUBNETBlockV2
 from models.simple_models import MeanPool, BiLSTM
 from models.transformer_models import TinyTransformer, TransformerBase
 
@@ -19,37 +19,37 @@ print("MAIN STARTED")
 def build_model(args, vocab_size, num_classes, pad_id):
     name = args.model.lower()
 
-    if name == "tmr":
-        cfg = TMRConfig(
+    if name == "NubNet":
+        cfg = NUBNETConfig(
             vocab_size=vocab_size,
             num_classes=num_classes,
             max_len=args.max_len,
             d_model=args.d_model,
-            mem_slots=args.tmr_slots,
-            steps=0 if args.tmr_no_settle else args.tmr_steps,
-            decay=args.tmr_decay,
-            gate=args.tmr_gate,
-            topk=args.tmr_topk,
-            dropout=args.tmr_dropout,
-            score_clip=args.tmr_score_clip,
+            mem_slots=args.NubNet_slots,
+            steps=0 if args.NubNet_no_settle else args.NubNet_steps,
+            decay=args.NubNet_decay,
+            gate=args.NubNet_gate,
+            topk=args.NubNet_topk,
+            dropout=args.NubNet_dropout,
+            score_clip=args.NubNet_score_clip,
         )
-        return TMRModel(args.d_model, num_classes, cfg)
+        return NUBNETModel(args.d_model, num_classes, cfg)
 
-    if name == "tmr_v2":
-        cfg = TMRConfig(
+    if name == "NubNet_v2":
+        cfg = NUBNETConfig(
             vocab_size=vocab_size,
             num_classes=num_classes,
             max_len=args.max_len,
             d_model=args.d_model,
-            mem_slots=args.tmr_slots,
-            steps=0 if args.tmr_no_settle else args.tmr_steps,
-            decay=args.tmr_decay,
-            gate=args.tmr_gate,
-            topk=args.tmr_topk,
-            dropout=args.tmr_dropout,
-            score_clip=args.tmr_score_clip,
+            mem_slots=args.NubNet_slots,
+            steps=0 if args.NubNet_no_settle else args.NubNet_steps,
+            decay=args.NubNet_decay,
+            gate=args.NubNet_gate,
+            topk=args.NubNet_topk,
+            dropout=args.NubNet_dropout,
+            score_clip=args.NubNet_score_clip,
         )
-        return TMRBlockV2(cfg)
+        return NUBNETBlockV2(cfg)
 
     if name == "meanpool":
         return MeanPool(
@@ -88,17 +88,17 @@ def build_model(args, vocab_size, num_classes, pad_id):
 
 def build_output_filename(args):
     """
-    Build informative filenames so TMR/TMR-v2 ablations do not overwrite each other.
+    Build informative filenames so NUBNET/NUBNET-v2 ablations do not overwrite each other.
     """
     parts = [args.model, args.dataset, f"seed{args.seed}"]
 
-    if args.model.lower() in {"tmr", "tmr_v2"}:
-        steps = 0 if args.tmr_no_settle else args.tmr_steps
+    if args.model.lower() in {"NubNet", "NubNet_v2"}:
+        steps = 0 if args.NubNet_no_settle else args.NubNet_steps
         parts.extend([
             f"steps{steps}",
-            f"slots{args.tmr_slots}",
-            f"topk{args.tmr_topk}",
-            f"gate{int(args.tmr_gate)}",
+            f"slots{args.NubNet_slots}",
+            f"topk{args.NubNet_topk}",
+            f"gate{int(args.NubNet_gate)}",
         ])
 
     return "_".join(parts) + ".json"
@@ -112,14 +112,14 @@ def main():
         "--model",
         type=str,
         choices=[
-            "tmr",
-            "tmr_v2",
+            "NubNet",
+            "NubNet_v2",
             "meanpool",
             "bilstm",
             "tiny_transformer",
             "transformer_base",
         ],
-        default="tmr",
+        default="NubNet",
     )
 
     parser.add_argument("--epochs", type=int, default=3)
@@ -132,15 +132,15 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output_dir", type=str, default="results")
 
-    # TMR controls
-    parser.add_argument("--tmr_steps", type=int, default=4)
-    parser.add_argument("--tmr_slots", type=int, default=64)
-    parser.add_argument("--tmr_decay", type=float, default=0.9)
-    parser.add_argument("--tmr_gate", action="store_true")
-    parser.add_argument("--tmr_topk", type=int, default=0)
-    parser.add_argument("--tmr_no_settle", action="store_true")
-    parser.add_argument("--tmr_dropout", type=float, default=0.1)
-    parser.add_argument("--tmr_score_clip", type=float, default=20.0)
+    # NUBNET controls
+    parser.add_argument("--NubNet_steps", type=int, default=4)
+    parser.add_argument("--NubNet_slots", type=int, default=64)
+    parser.add_argument("--NubNet_decay", type=float, default=0.9)
+    parser.add_argument("--NubNet_gate", action="store_true")
+    parser.add_argument("--NubNet_topk", type=int, default=0)
+    parser.add_argument("--NubNet_no_settle", action="store_true")
+    parser.add_argument("--NubNet_dropout", type=float, default=0.1)
+    parser.add_argument("--NubNet_score_clip", type=float, default=20.0)
 
     args = parser.parse_args()
 
@@ -153,13 +153,13 @@ def main():
     print(f"Model: {args.model} | d_model={args.d_model} | lr={args.lr}")
     print(f"Dataset: {args.dataset} | max_len={args.max_len} | batch_size={args.batch_size}")
 
-    if args.model.lower() in {"tmr", "tmr_v2"}:
+    if args.model.lower() in {"NubNet", "NubNet_v2"}:
         print(
-            f"TMR config | slots={args.tmr_slots} | "
-            f"steps={0 if args.tmr_no_settle else args.tmr_steps} | "
-            f"decay={args.tmr_decay} | gate={args.tmr_gate} | "
-            f"topk={args.tmr_topk} | dropout={args.tmr_dropout} | "
-            f"score_clip={args.tmr_score_clip}"
+            f"NUBNET config | slots={args.NubNet_slots} | "
+            f"steps={0 if args.NubNet_no_settle else args.NubNet_steps} | "
+            f"decay={args.NubNet_decay} | gate={args.NubNet_gate} | "
+            f"topk={args.NubNet_topk} | dropout={args.NubNet_dropout} | "
+            f"score_clip={args.NubNet_score_clip}"
         )
 
     print("-" * 70)
