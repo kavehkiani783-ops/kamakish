@@ -9,7 +9,7 @@ from data.datasets import get_dataset
 from training.runner import train_and_evaluate
 
 from models.HubNet_config import HUBNETConfig
-from models.HubNet_block import HubNetModel, HubNetBlockV2
+from models.HubNet_block import HUBNETModel, HubNetBlockV2
 from models.simple_models import MeanPool, BiLSTM
 from models.transformer_models import TinyTransformer, TransformerBase
 
