@@ -44,15 +44,15 @@ DATASET_CONFIGS = {
     },
 }
 
-# Default NUBNET config used as the base before sweeping one parameter
-NUBNET_BASE_CONFIG = {
-    "NubNet_steps": 2,
-    "NubNet_slots": 16,
-    "NubNet_decay": 0.9,
-    "NubNet_topk": 0,
-    "NubNet_dropout": 0.1,
-    "NubNet_score_clip": 20.0,
-    "NubNet_gate": False,
+# Default HUBNET config used as the base before sweeping one parameter
+HUBNET_BASE_CONFIG = {
+    "HubNet_steps": 2,
+    "HubNet_slots": 16,
+    "HubNet_decay": 0.9,
+    "HubNet_topk": 0,
+    "HubNet_dropout": 0.1,
+    "HubNet_score_clip": 20.0,
+    "HubNet_gate": False,
 }
 
 # Sweep values are defined here in code
@@ -65,7 +65,7 @@ ABLATION_SWEEPS = {
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run NUBNET ablation sweeps across both datasets and store everything in one folder."
+        description="Run HUBNET ablation sweeps across both datasets and store everything in one folder."
     )
     parser.add_argument("--python_exec", type=str, default=sys.executable, help="Python executable to use")
     parser.add_argument("--main_py", type=str, default="main.py", help="Path to main.py")
@@ -96,37 +96,37 @@ def build_jobs(args: argparse.Namespace) -> List[Dict[str, Any]]:
             for seed in ABLATION_SEEDS:
                 cmd = [
                     "--dataset", dataset,
-                    "--model", "NubNet",
+                    "--model", "HubNet",
                     "--epochs", str(dataset_cfg["epochs"]),
                     "--seed", str(seed),
                     "--batch_size", str(dataset_cfg["batch_size"]),
                     "--max_len", str(dataset_cfg["max_len"]),
                     "--val_ratio", str(dataset_cfg["val_ratio"]),
                     "--d_model", str(dataset_cfg["d_model"]),
-                    "--NubNet_steps", str(NUBNET_BASE_CONFIG["NubNet_steps"]),
-                    "--NubNet_slots", str(NUBNET_BASE_CONFIG["NubNet_slots"]),
-                    "--NubNet_decay", str(NUBNET_BASE_CONFIG["NubNet_decay"]),
-                    "--NubNet_topk", str(NUBNET_BASE_CONFIG["NubNet_topk"]),
-                    "--NubNet_dropout", str(NUBNET_BASE_CONFIG["NubNet_dropout"]),
-                    "--NubNet_score_clip", str(NUBNET_BASE_CONFIG["NubNet_score_clip"]),
+                    "--HubNet_steps", str(HUBNET_BASE_CONFIG["HubNet_steps"]),
+                    "--HubNet_slots", str(HUBNET_BASE_CONFIG["HubNet_slots"]),
+                    "--HubNet_decay", str(HUBNET_BASE_CONFIG["HubNet_decay"]),
+                    "--HubNet_topk", str(HUBNET_BASE_CONFIG["HubNet_topk"]),
+                    "--HubNet_dropout", str(HUBNET_BASE_CONFIG["HubNet_dropout"]),
+                    "--HubNet_score_clip", str(HUBNET_BASE_CONFIG["HubNet_score_clip"]),
                 ]
 
-                if NUBNET_BASE_CONFIG["NubNet_gate"]:
-                    cmd.append("--NubNet_gate")
+                if HUBNET_BASE_CONFIG["HubNet_gate"]:
+                    cmd.append("--HubNet_gate")
 
                 if args.ablation == "steps":
-                    replace_arg_value(cmd, "--NubNet_steps", str(ablation_value))
+                    replace_arg_value(cmd, "--HubNet_steps", str(ablation_value))
                 elif args.ablation == "slots":
-                    replace_arg_value(cmd, "--NubNet_slots", str(ablation_value))
+                    replace_arg_value(cmd, "--HubNet_slots", str(ablation_value))
                 elif args.ablation == "topk":
-                    replace_arg_value(cmd, "--NubNet_topk", str(ablation_value))
+                    replace_arg_value(cmd, "--HubNet_topk", str(ablation_value))
                 else:
                     raise ValueError(f"Unsupported ablation type: {args.ablation}")
 
                 jobs.append(
                     {
                         "dataset": dataset,
-                        "model": "NubNet",
+                        "model": "HubNet",
                         "seed": seed,
                         "ablation_name": args.ablation,
                         "ablation_value": ablation_value,
@@ -193,7 +193,7 @@ def main() -> None:
         stdout = ""
         stderr = ""
 
-        out_name = f"NubNet_{dataset}_{ablation_name}{ablation_value}_seed{seed}.json"
+        out_name = f"HubNet_{dataset}_{ablation_name}{ablation_value}_seed{seed}.json"
         out_path = runs_dir / out_name
 
         if completed.returncode != 0:
