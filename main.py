@@ -8,18 +8,41 @@ import torch
 from data.datasets import get_dataset
 from training.runner import train_and_evaluate
 
-from models.HubNet_config import HUBNETConfig
-from models.HubNet_block import HUBNETModel, HUBNETBlockV2
+from models.hubnet_config import HUBNETConfig
+from models.hubnet_block import HubNetModel, HubNetBlockV2
 from models.simple_models import MeanPool, BiLSTM
 from models.transformer_models import TinyTransformer, TransformerBase
 
 print("MAIN STARTED")
 
 
+def normalise_model_name(name: str) -> str:
+    """
+    Make model selection case-insensitive and allow a few legacy aliases.
+    """
+    name = name.strip().lower()
+
+    aliases = {
+        "hubnet": "hubnet",
+        "hubnet_v2": "hubnet_v2",
+        "tmr": "hubnet",          # legacy alias
+        "tmr_v2": "hubnet_v2",    # legacy alias
+        "meanpool": "meanpool",
+        "bilstm": "bilstm",
+        "tiny_transformer": "tiny_transformer",
+        "transformer_base": "transformer_base",
+    }
+
+    if name not in aliases:
+        raise ValueError(f"Unknown model: {name}")
+
+    return aliases[name]
+
+
 def build_model(args, vocab_size, num_classes, pad_id):
-    name = args.model.lower()
+    name = normalise_model_name(args.model)
 
-    if name == "HubNet":
+    if name == "hubnet":
         cfg = HUBNETConfig(
             vocab_size=vocab_size,
             num_classes=num_classes,
@@ -33,9 +56,9 @@ def build_model(args, vocab_size, num_classes, pad_id):
             dropout=args.HubNet_dropout,
             score_clip=args.HubNet_score_clip,
         )
-        return HUBNETModel(args.d_model, num_classes, cfg)
+        return HubNetModel(args.d_model, num_classes, cfg)
 
-    if name == "HubNet_v2":
+    if name == "hubnet_v2":
         cfg = HUBNETConfig(
             vocab_size=vocab_size,
             num_classes=num_classes,
@@ -49,7 +72,7 @@ def build_model(args, vocab_size, num_classes, pad_id):
             dropout=args.HubNet_dropout,
             score_clip=args.HubNet_score_clip,
         )
-        return HUBNETBlockV2(cfg)
+        return HubNetBlockV2(cfg)
 
     if name == "meanpool":
         return MeanPool(
@@ -88,11 +111,12 @@ def build_model(args, vocab_size, num_classes, pad_id):
 
 def build_output_filename(args):
     """
-    Build informative filenames so HUBNET/HUBNET-v2 ablations do not overwrite each other.
+    Build informative filenames so HubNet/HubNet-v2 runs do not overwrite each other.
     """
-    parts = [args.model, args.dataset, f"seed{args.seed}"]
+    model_name = normalise_model_name(args.model)
+    parts = [model_name, args.dataset, f"seed{args.seed}"]
 
-    if args.model.lower() in {"HubNet", "HubNet_v2"}:
+    if model_name in {"hubnet", "hubnet_v2"}:
         steps = 0 if args.HubNet_no_settle else args.HubNet_steps
         parts.extend([
             f"steps{steps}",
@@ -111,15 +135,12 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        choices=[
-            "HubNet",
-            "HubNet_v2",
-            "meanpool",
-            "bilstm",
-            "tiny_transformer",
-            "transformer_base",
-        ],
-        default="HubNet",
+        default="hubnet",
+        help=(
+            "Model name. Supported: hubnet, hubnet_v2, meanpool, bilstm, "
+            "tiny_transformer, transformer_base. "
+            "Also accepts legacy aliases: tmr, tmr_v2."
+        ),
     )
 
     parser.add_argument("--epochs", type=int, default=3)
@@ -132,7 +153,7 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output_dir", type=str, default="results")
 
-    # HUBNET controls
+    # HubNet controls
     parser.add_argument("--HubNet_steps", type=int, default=4)
     parser.add_argument("--HubNet_slots", type=int, default=64)
     parser.add_argument("--HubNet_decay", type=float, default=0.9)
@@ -143,6 +164,7 @@ def main():
     parser.add_argument("--HubNet_score_clip", type=float, default=20.0)
 
     args = parser.parse_args()
+    model_name = normalise_model_name(args.model)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -150,12 +172,12 @@ def main():
     print(f"Device: {device}")
     if device.type == "cuda":
         print(f"GPU: {torch.cuda.get_device_name(0)}")
-    print(f"Model: {args.model} | d_model={args.d_model} | lr={args.lr}")
+    print(f"Model: {model_name} | d_model={args.d_model} | lr={args.lr}")
     print(f"Dataset: {args.dataset} | max_len={args.max_len} | batch_size={args.batch_size}")
 
-    if args.model.lower() in {"HubNet", "HubNet_v2"}:
+    if model_name in {"hubnet", "hubnet_v2"}:
         print(
-            f"HUBNET config | slots={args.HubNet_slots} | "
+            f"HubNet config | slots={args.HubNet_slots} | "
             f"steps={0 if args.HubNet_no_settle else args.HubNet_steps} | "
             f"decay={args.HubNet_decay} | gate={args.HubNet_gate} | "
             f"topk={args.HubNet_topk} | dropout={args.HubNet_dropout} | "
