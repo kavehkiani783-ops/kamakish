@@ -9,7 +9,7 @@ from data.datasets import get_dataset
 from training.runner import train_and_evaluate
 
 from models.tmr_config import TMRConfig
-from models.tmr_block import TMRModel
+from models.tmr_block import TMRModel, TMRBlockV2
 from models.simple_models import MeanPool, BiLSTM
 from models.transformer_models import TinyTransformer, TransformerBase
 
@@ -32,6 +32,22 @@ def build_model(args, vocab_size, num_classes, pad_id):
             score_clip=args.tmr_score_clip,
         )
         return TMRModel(args.d_model, num_classes, cfg)
+
+    if name == "tmr_v2":
+        cfg = TMRConfig(
+            vocab_size=vocab_size,
+            num_classes=num_classes,
+            max_len=args.max_len,
+            d_model=args.d_model,
+            mem_slots=args.tmr_slots,
+            steps=0 if args.tmr_no_settle else args.tmr_steps,
+            decay=args.tmr_decay,
+            gate=args.tmr_gate,
+            topk=args.tmr_topk,
+            dropout=args.tmr_dropout,
+            score_clip=args.tmr_score_clip,
+        )
+        return TMRBlockV2(cfg)
 
     if name == "meanpool":
         return MeanPool(
@@ -82,7 +98,14 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        choices=["tmr", "meanpool", "bilstm", "tiny_transformer", "transformer_base"],
+        choices=[
+            "tmr",
+            "tmr_v2",
+            "meanpool",
+            "bilstm",
+            "tiny_transformer",
+            "transformer_base",
+        ],
         default="tmr",
     )
 
@@ -117,7 +140,7 @@ def main():
     print(f"Model: {args.model} | d_model={args.d_model} | lr={args.lr}")
     print(f"Dataset: {args.dataset} | max_len={args.max_len} | batch_size={args.batch_size}")
 
-    if args.model.lower() == "tmr":
+    if args.model.lower() in {"tmr", "tmr_v2"}:
         print(
             f"TMR config | slots={args.tmr_slots} | "
             f"steps={0 if args.tmr_no_settle else args.tmr_steps} | "
@@ -137,7 +160,10 @@ def main():
         val_size=args.val_size,
     )
 
-    print(f"Split sizes | train={meta['train_size']} | val={meta['val_size']} | test={meta['test_size']}")
+    print(
+        f"Split sizes | train={meta['train_size']} | "
+        f"val={meta['val_size']} | test={meta['test_size']}"
+    )
     print("-" * 70)
 
     model = build_model(
