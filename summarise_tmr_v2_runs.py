@@ -1,110 +1,80 @@
-import glob
 import json
+import glob
 import os
-import re
 import csv
+import re
 
 
 RESULTS_DIR = "results"
 PATTERN = os.path.join(RESULTS_DIR, "tmr_v2_listops_synth_seed*_steps*_slots*_topk*_gate1.json")
 
 
-def extract_from_filename(path):
-    name = os.path.basename(path)
-
-    seed_match = re.search(r"seed(\d+)", name)
-    steps_match = re.search(r"steps(\d+)", name)
-    slots_match = re.search(r"slots(\d+)", name)
-    topk_match = re.search(r"topk(\d+)", name)
-    gate_match = re.search(r"gate(\d+)", name)
-
-    return {
-        "seed": int(seed_match.group(1)) if seed_match else None,
-        "steps": int(steps_match.group(1)) if steps_match else None,
-        "slots": int(slots_match.group(1)) if slots_match else None,
-        "topk": int(topk_match.group(1)) if topk_match else None,
-        "gate": int(gate_match.group(1)) if gate_match else None,
-    }
+def parse_filename(fname):
+    seed = int(re.search(r"seed(\d+)", fname).group(1))
+    steps = int(re.search(r"steps(\d+)", fname).group(1))
+    slots = int(re.search(r"slots(\d+)", fname).group(1))
+    return seed, steps, slots
 
 
-def safe_get(dct, *keys, default=None):
-    cur = dct
-    for k in keys:
-        if not isinstance(cur, dict) or k not in cur:
-            return default
-        cur = cur[k]
-    return cur
+def extract_metrics(data):
+    """
+    Try several possible result structures.
+    """
+    if "test" in data and "accuracy" in data["test"]:
+        test_acc = data["test"]["accuracy"]
+    elif "test_metrics" in data and "accuracy" in data["test_metrics"]:
+        test_acc = data["test_metrics"]["accuracy"]
+    elif "test_acc" in data:
+        test_acc = data["test_acc"]
+    else:
+        test_acc = None
+
+    if "epoch_time" in data:
+        epoch_time = data["epoch_time"]
+    elif "avg_epoch_time" in data:
+        epoch_time = data["avg_epoch_time"]
+    else:
+        epoch_time = None
+
+    return test_acc, epoch_time
 
 
 def main():
     files = sorted(glob.glob(PATTERN))
+
     rows = []
 
-    if not files:
-        print("No matching result files found.")
-        return
+    for f in files:
+        with open(f) as fp:
+            data = json.load(fp)
 
-    for path in files:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        seed, steps, slots = parse_filename(f)
+        test_acc, epoch_time = extract_metrics(data)
 
-        meta = extract_from_filename(path)
+        rows.append({
+            "seed": seed,
+            "steps": steps,
+            "slots": slots,
+            "test_accuracy": test_acc,
+            "epoch_time": epoch_time,
+        })
 
-        row = {
-            "file": os.path.basename(path),
-            "seed": meta["seed"],
-            "steps": meta["steps"],
-            "slots": meta["slots"],
-            "topk": meta["topk"],
-            "gate": meta["gate"],
-            "val_accuracy": (
-                safe_get(data, "val", "accuracy")
-                or safe_get(data, "val_metrics", "accuracy")
-                or safe_get(data, "best_val", "accuracy")
-            ),
-            "test_accuracy": (
-                safe_get(data, "test", "accuracy")
-                or safe_get(data, "test_metrics", "accuracy")
-                or safe_get(data, "accuracy")
-            ),
-            "epoch_time_min": (
-                safe_get(data, "epoch_time_min")
-                or safe_get(data, "avg_epoch_time_min")
-                or safe_get(data, "epoch_time")
-            ),
-            "num_parameters": (
-                safe_get(data, "num_parameters")
-                or safe_get(data, "params")
-            ),
-        }
-        rows.append(row)
+    rows.sort(key=lambda x: (x["steps"], x["seed"]))
 
     out_csv = os.path.join(RESULTS_DIR, "summary_tmr_v2_steps_seeds.csv")
-    fieldnames = [
-        "file",
-        "seed",
-        "steps",
-        "slots",
-        "topk",
-        "gate",
-        "val_accuracy",
-        "test_accuracy",
-        "epoch_time_min",
-        "num_parameters",
-    ]
 
-    with open(out_csv, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+    with open(out_csv, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
         writer.writeheader()
         writer.writerows(rows)
 
-    print(f"Saved summary to: {out_csv}")
+    print("\nSaved summary to:", out_csv)
 
-    print("\nQuick view:")
-    for row in rows:
+    print("\nSummary:")
+    for r in rows:
         print(
-            f"seed={row['seed']} | steps={row['steps']} | "
-            f"test_acc={row['test_accuracy']} | epoch_time={row['epoch_time_min']}"
+            f"seed={r['seed']} | steps={r['steps']} | "
+            f"test_acc={r['test_accuracy']}"
         )
 
 
