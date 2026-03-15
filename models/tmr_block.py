@@ -29,9 +29,9 @@ def sparse_topk_softmax(scores: torch.Tensor, topk: int) -> torch.Tensor:
     return F.softmax(masked, dim=-1)
 
 
-class TMRModel(nn.Module):
+class NUBNETModel(nn.Module):
     """
-    TMR-v1 baseline model.
+    NUBNET-v1 baseline model.
 
     This version keeps the original EMA-style memory update:
         M_new = decay * M + (1 - decay) * write
@@ -174,13 +174,13 @@ class TMRModel(nn.Module):
         return logits
 
 
-class TMRBlockV2(nn.Module):
+class NUBNETBlockV2(nn.Module):
     """
-    TMR-v2:
+    NUBNET-v2:
     - residual memory updates
     - learned write gate
     - optional memory normalisation
-    - keeps the same high-level TMR idea but avoids excessive memory mixing
+    - keeps the same high-level NUBNET idea but avoids excessive memory mixing
 
     Expected input:
       input_ids: (B, T)
