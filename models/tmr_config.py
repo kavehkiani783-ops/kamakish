@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 
 @dataclass
-class TMRConfig:
+class NUBNETConfig:
     vocab_size: int
     num_classes: int
 
