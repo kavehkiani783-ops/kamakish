@@ -7,13 +7,13 @@ from collections import defaultdict
 
 
 RESULTS_DIR = "results"
-PATTERN = os.path.join(RESULTS_DIR, "NubNet_v2_*_seed*_steps*_slots*_topk*_gate*.json")
+PATTERN = os.path.join(RESULTS_DIR, "HubNet_v2_*_seed*_steps*_slots*_topk*_gate*.json")
 
 
 def extract_from_filename(path):
     name = os.path.basename(path)
 
-    dataset_match = re.search(r"NubNet_v2_(.+?)_seed\d+_steps", name)
+    dataset_match = re.search(r"HubNet_v2_(.+?)_seed\d+_steps", name)
     seed_match = re.search(r"seed(\d+)", name)
     steps_match = re.search(r"steps(\d+)", name)
     slots_match = re.search(r"slots(\d+)", name)
@@ -126,7 +126,7 @@ def main():
         }
         rows.append(row)
 
-    out_csv = os.path.join(RESULTS_DIR, "summary_NubNet_v2_runs.csv")
+    out_csv = os.path.join(RESULTS_DIR, "summary_HubNet_v2_runs.csv")
     fieldnames = [
         "file",
         "dataset",
