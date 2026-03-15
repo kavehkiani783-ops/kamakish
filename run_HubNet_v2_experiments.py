@@ -22,23 +22,23 @@ def main():
                 cmd = [
                     sys.executable, "main.py",
                     "--dataset", dataset,
-                    "--model", "tmr_v2",
+                    "--model", "HubNet_v2",
                     "--epochs", "3",
                     "--batch_size", "64",
                     "--max_len", "512",
                     "--seed", str(seed),
                     "--d_model", "128",
-                    "--tmr_slots", "32",
-                    "--tmr_steps", str(steps),
-                    "--tmr_topk", "0",
-                    "--tmr_dropout", "0.1",
-                    "--tmr_score_clip", "20.0",
-                    "--tmr_gate",
+                    "--HubNet_slots", "32",
+                    "--HubNet_steps", str(steps),
+                    "--HubNet_topk", "0",
+                    "--HubNet_dropout", "0.1",
+                    "--HubNet_score_clip", "20.0",
+                    "--HubNet_gate",
                 ]
 
                 run_cmd(cmd)
 
-    print("\nAll TMR-v2 experiments finished.")
+    print("\nAll HUBNET-v2 experiments finished.")
 
 
 if __name__ == "__main__":
