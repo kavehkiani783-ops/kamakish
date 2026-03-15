@@ -27,21 +27,21 @@ def main():
         ("transformer_base", []),
     ]
 
-    tmr_v1_args = [
-        "--tmr_slots", "32",
-        "--tmr_steps", "1",
-        "--tmr_topk", "0",
-        "--tmr_dropout", "0.1",
-        "--tmr_score_clip", "20.0",
+    NubNet_v1_args = [
+        "--NubNet_slots", "32",
+        "--NubNet_steps", "1",
+        "--NubNet_topk", "0",
+        "--NubNet_dropout", "0.1",
+        "--NubNet_score_clip", "20.0",
     ]
 
-    tmr_v2_args = [
-        "--tmr_slots", "32",
-        "--tmr_steps", "4",
-        "--tmr_topk", "0",
-        "--tmr_dropout", "0.1",
-        "--tmr_score_clip", "20.0",
-        "--tmr_gate",
+    NubNet_v2_args = [
+        "--NubNet_slots", "32",
+        "--NubNet_steps", "4",
+        "--NubNet_topk", "0",
+        "--NubNet_dropout", "0.1",
+        "--NubNet_score_clip", "20.0",
+        "--NubNet_gate",
     ]
 
     for dataset in datasets:
@@ -60,20 +60,20 @@ def main():
             cmd = [
                 sys.executable, "main.py",
                 "--dataset", dataset,
-                "--model", "tmr",
+                "--model", "NubNet",
                 "--seed", str(seed),
                 *base_args,
-                *tmr_v1_args,
+                *NubNet_v1_args,
             ]
             run_cmd(cmd)
 
             cmd = [
                 sys.executable, "main.py",
                 "--dataset", dataset,
-                "--model", "tmr_v2",
+                "--model", "NubNet_v2",
                 "--seed", str(seed),
                 *base_args,
-                *tmr_v2_args,
+                *NubNet_v2_args,
             ]
             run_cmd(cmd)
 
