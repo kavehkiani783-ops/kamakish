@@ -214,7 +214,7 @@ def plot_resonance_dynamics(
 ):
     """
     Requires:
-        - model_name == "TMR" (or contains resonance)
+        - model_name == "NUBNET" (or contains resonance)
         - dynamics["delta_norms"]
     """
 
