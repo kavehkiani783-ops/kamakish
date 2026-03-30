@@ -20,8 +20,8 @@ def parse_filename(name):
         "tiny_transformer",
         "meanpool",
         "bilstm",
-        "HubNet_v1",
-        "HubNet_v2",
+        "hubnet_v1",
+        "hubnet_v2",
     ]
 
     for candidate in valid_models:
@@ -157,7 +157,7 @@ def main():
     print("\nPer-run summary:")
     for row in sorted(rows, key=lambda r: (r["dataset"], r["model"], r["seed"])):
         extra = []
-        if row["model"] in {"tmr", "tmr_v2"}:
+        if row["model"] in {"hubnet_v1", "hubnet_v2"}:
             extra.append(f"steps={row['steps']}")
             extra.append(f"slots={row['slots']}")
             extra.append(f"topk={row['topk']}")
@@ -182,7 +182,7 @@ def main():
         avg_time = mean([r["epoch_time_min"] for r in grp])
 
         config_bits = []
-        if model in {"tmr", "tmr_v2"}:
+        if model in {"hubnet_v1", "hubnet_v2"}:
             config_bits.append(f"steps={grp[0]['steps']}")
             config_bits.append(f"slots={grp[0]['slots']}")
             config_bits.append(f"topk={grp[0]['topk']}")
