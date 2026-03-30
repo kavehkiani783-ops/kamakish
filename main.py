@@ -9,7 +9,7 @@ from data.datasets import get_dataset
 from training.runner import train_and_evaluate
 
 from models.HubNet_config import HUBNETConfig
-from models.HubNet_block import HUBNETModel, HUBNETBlockV2
+from models.HubNet_block import HUBNETBlockV1, HUBNETBlockV2
 from models.simple_models import MeanPool, BiLSTM
 from models.transformer_models import TinyTransformer, TransformerBase
 
@@ -23,10 +23,8 @@ def normalise_model_name(name: str) -> str:
     name = name.strip().lower()
 
     aliases = {
-        "hubnet": "hubnet",
+        "hubnet_v1": "hubnet_v1",
         "hubnet_v2": "hubnet_v2",
-        "tmr": "hubnet",
-        "tmr_v2": "hubnet_v2",
         "meanpool": "meanpool",
         "bilstm": "bilstm",
         "tiny_transformer": "tiny_transformer",
@@ -42,7 +40,7 @@ def normalise_model_name(name: str) -> str:
 def build_model(args, vocab_size, num_classes, pad_id):
     name = normalise_model_name(args.model)
 
-    if name == "hubnet":
+    if name == "hubnet_v1":
         cfg = HUBNETConfig(
             vocab_size=vocab_size,
             num_classes=num_classes,
@@ -56,7 +54,7 @@ def build_model(args, vocab_size, num_classes, pad_id):
             dropout=args.HubNet_dropout,
             score_clip=args.HubNet_score_clip,
         )
-        return HUBNETModel(args.d_model, num_classes, cfg)
+        return HUBNETBlockV1(args.d_model, num_classes, cfg)
 
     if name == "hubnet_v2":
         cfg = HUBNETConfig(
@@ -111,12 +109,12 @@ def build_model(args, vocab_size, num_classes, pad_id):
 
 def build_output_filename(args):
     """
-    Build informative filenames so HubNet / HubNet-v2 runs do not overwrite each other.
+    Build informative filenames so HubNet-v1 / HubNet-v2 runs do not overwrite each other.
     """
     model_name = normalise_model_name(args.model)
     parts = [model_name, args.dataset, f"seed{args.seed}"]
 
-    if model_name in {"hubnet", "hubnet_v2"}:
+    if model_name in {"hubnet_v1", "hubnet_v2"}:
         steps = 0 if args.HubNet_no_settle else args.HubNet_steps
         parts.extend([
             f"steps{steps}",
@@ -135,9 +133,9 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="hubnet",
+        default="hubnet_v1",
         help=(
-            "Supported: hubnet, hubnet_v2, meanpool, bilstm, "
+            "Supported: hubnet_v1, hubnet_v2, meanpool, bilstm, "
             "tiny_transformer, transformer_base. "
             "Legacy aliases tmr and tmr_v2 are also accepted."
         ),
@@ -175,7 +173,7 @@ def main():
     print(f"Model: {model_name} | d_model={args.d_model} | lr={args.lr}")
     print(f"Dataset: {args.dataset} | max_len={args.max_len} | batch_size={args.batch_size}")
 
-    if model_name in {"hubnet", "hubnet_v2"}:
+    if model_name in {"hubnet_v1", "hubnet_v2"}:
         print(
             f"HubNet config | slots={args.HubNet_slots} | "
             f"steps={0 if args.HubNet_no_settle else args.HubNet_steps} | "
