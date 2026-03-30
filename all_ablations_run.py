@@ -24,7 +24,7 @@ from experiment_common import (
 # ============================================================
 
 ABLATION_DATASETS = ["imdb", "listops_synth"]
-ABLATION_SEEDS = [42, 123, 999]
+ABLATION_SEEDS = [42, 43, 44]
 
 # Shared defaults per dataset
 DATASET_CONFIGS = {
@@ -96,7 +96,7 @@ def build_jobs(args: argparse.Namespace) -> List[Dict[str, Any]]:
             for seed in ABLATION_SEEDS:
                 cmd = [
                     "--dataset", dataset,
-                    "--model", "HubNet",
+                    "--model", "HubNet_v2",
                     "--epochs", str(dataset_cfg["epochs"]),
                     "--seed", str(seed),
                     "--batch_size", str(dataset_cfg["batch_size"]),
@@ -126,7 +126,7 @@ def build_jobs(args: argparse.Namespace) -> List[Dict[str, Any]]:
                 jobs.append(
                     {
                         "dataset": dataset,
-                        "model": "HubNet",
+                        "model": "HubNet_v2",
                         "seed": seed,
                         "ablation_name": args.ablation,
                         "ablation_value": ablation_value,
