@@ -20,8 +20,8 @@ def parse_filename(name):
         "tiny_transformer",
         "meanpool",
         "bilstm",
-        "tmr_v2",
-        "tmr",
+        "HubNet_v1",
+        "HubNet_v2",
     ]
 
     for candidate in valid_models:
