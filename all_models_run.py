@@ -15,7 +15,7 @@ def main():
 
     base_args = [
         "--epochs", "3",
-        "--batch_size", "64",
+        "--batch_size", "32",
         "--max_len", "512",
         "--d_model", "128",
     ]
