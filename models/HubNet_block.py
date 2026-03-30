@@ -29,7 +29,7 @@ def sparse_topk_softmax(scores: torch.Tensor, topk: int) -> torch.Tensor:
     return F.softmax(masked, dim=-1)
 
 
-class HUBNETModel(nn.Module):
+class HUBNETBlockV1(nn.Module):
     """
     HUBNET-v1 baseline model.
 
