@@ -60,7 +60,7 @@ def main():
             cmd = [
                 sys.executable, "main.py",
                 "--dataset", dataset,
-                "--model", "HubNet",
+                "--model", "HubNet_v1",
                 "--seed", str(seed),
                 *base_args,
                 *HubNet_v1_args,
