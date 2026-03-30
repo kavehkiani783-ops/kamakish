@@ -86,7 +86,7 @@ def keep_row(meta):
     if meta["model"] in BASELINE_MODELS:
         return True
 
-    if meta["model"] == "tmr":
+    if meta["model"] == "hubnet_v1":
         return (
             meta["steps"] == 1 and
             meta["slots"] == 32 and
@@ -94,7 +94,7 @@ def keep_row(meta):
             meta["gate"] == 0
         )
 
-    if meta["model"] == "tmr_v2":
+    if meta["model"] == "hubnet_v2":
         return (
             meta["steps"] == 4 and
             meta["slots"] == 32 and
