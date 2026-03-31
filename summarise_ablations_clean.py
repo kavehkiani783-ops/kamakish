@@ -12,7 +12,26 @@ PATTERN = os.path.join(ABLATION_ROOT, "**", "*.json")
 ABLATION_MODELS = {"hubnet_v1", "hubnet_v2"}
 
 
-def parse_filename(name):
+def extract_arg(command, arg_name, cast_type=int):
+    if not isinstance(command, str):
+        return None
+    m = re.search(rf"{re.escape(arg_name)}\s+([^\s]+)", command)
+    if not m:
+        return None
+    try:
+        return cast_type(m.group(1))
+    except Exception:
+        return None
+
+
+def detect_gate(command):
+    if not isinstance(command, str):
+        return None
+    return 1 if "--HubNet_gate" in command else 0
+
+
+def parse_from_filename_or_json(path, data):
+    name = os.path.basename(path)
     stem = name[:-5] if name.endswith(".json") else name
 
     valid_models = [
@@ -33,30 +52,62 @@ def parse_filename(name):
             rest = stem[len(prefix):]
             break
 
-    if model is None:
+    dataset = None
+    seed = None
+    steps = None
+    slots = None
+    topk = None
+    gate = None
+
+    if model is not None and rest is not None:
+        m = re.match(r"(.+?)_seed(\d+)(.*)", rest)
+        if m:
+            dataset = m.group(1)
+            seed = int(m.group(2))
+            suffix = m.group(3)
+
+            def extract_int(pattern):
+                mm = re.search(pattern, suffix)
+                return int(mm.group(1)) if mm else None
+
+            steps = extract_int(r"_steps(\d+)")
+            slots = extract_int(r"_slots(\d+)")
+            topk = extract_int(r"_topk(\d+)")
+            gate = extract_int(r"_gate(\d+)")
+
+    # Fallback to JSON content if filename is not enough
+    if isinstance(data, dict):
+        model = model or data.get("model")
+        dataset = dataset or data.get("dataset")
+        seed = seed if seed is not None else data.get("seed")
+
+        command = data.get("command", "")
+        steps = steps if steps is not None else extract_arg(command, "--HubNet_steps", int)
+        slots = slots if slots is not None else extract_arg(command, "--HubNet_slots", int)
+        topk = topk if topk is not None else extract_arg(command, "--HubNet_topk", int)
+        gate = gate if gate is not None else detect_gate(command)
+
+        # some result jsons may not include command, but include fields directly
+        steps = steps if steps is not None else data.get("steps")
+        slots = slots if slots is not None else data.get("slots")
+        topk = topk if topk is not None else data.get("topk")
+        gate = gate if gate is not None else data.get("gate")
+
+    if model not in ABLATION_MODELS:
         return None
-
-    m = re.match(r"(.+?)_seed(\d+)(.*)", rest)
-    if not m:
+    if dataset is None or seed is None:
         return None
-
-    dataset = m.group(1)
-    seed = int(m.group(2))
-    suffix = m.group(3)
-
-    def extract_int(pattern):
-        mm = re.search(pattern, suffix)
-        return int(mm.group(1)) if mm else None
 
     return {
         "file": name,
+        "source_path": path,
         "model": model,
         "dataset": dataset,
-        "seed": seed,
-        "steps": extract_int(r"_steps(\d+)"),
-        "slots": extract_int(r"_slots(\d+)"),
-        "topk": extract_int(r"_topk(\d+)"),
-        "gate": extract_int(r"_gate(\d+)"),
+        "seed": int(seed),
+        "steps": steps,
+        "slots": slots,
+        "topk": topk,
+        "gate": gate,
     }
 
 
@@ -110,22 +161,21 @@ def safe_std(xs):
 def load_rows():
     rows = []
 
-    for path in sorted(glob.glob(PATTERN, recursive=True)):
-        name = os.path.basename(path)
-        meta = parse_filename(name)
-        if meta is None:
-            continue
+    all_jsons = sorted(glob.glob(PATTERN, recursive=True))
+    print(f"Found {len(all_jsons)} json files under {ABLATION_ROOT}")
 
-        if meta["model"] not in ABLATION_MODELS:
-            continue
-
+    for path in all_jsons:
         with open(path, "r", encoding="utf-8") as f:
             try:
                 data = json.load(f)
-            except json.JSONDecodeError:
+            except Exception:
                 continue
 
         if not is_real_result_json(data):
+            continue
+
+        meta = parse_from_filename_or_json(path, data)
+        if meta is None:
             continue
 
         val_acc = find_first_key(data, {"val_accuracy", "best_val_acc", "best_val_accuracy", "val_acc"})
@@ -135,7 +185,6 @@ def load_rows():
 
         rows.append({
             **meta,
-            "source_path": path,
             "val_accuracy": val_acc,
             "test_accuracy": test_acc,
             "epoch_time": epoch_time,
@@ -229,21 +278,18 @@ def main():
 
     save_all_runs(rows)
 
-    # Steps ablation: fix slots=32, topk=0, gate=1
     summarise_ablation(
         rows,
         ablation_name="steps",
         fixed_filters={"slots": 32, "topk": 0, "gate": 1}
     )
 
-    # Slots ablation: fix steps=4, topk=0, gate=1
     summarise_ablation(
         rows,
         ablation_name="slots",
         fixed_filters={"steps": 4, "topk": 0, "gate": 1}
     )
 
-    # Top-k ablation: fix steps=4, slots=32, gate=1
     summarise_ablation(
         rows,
         ablation_name="topk",
