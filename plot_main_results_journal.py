@@ -3,13 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 import json
+import re
 
 import pandas as pd
 import matplotlib.pyplot as plt
 
 
 RESULTS_CSV = Path("results") / "summary_final_models.csv"
-RESULTS_JSON_DIR = Path("results")
+RESULTS_DIR = Path("results")
 OUTPUT_DIR = Path("figures_journal")
 
 MODEL_ORDER: List[str] = [
@@ -43,19 +44,19 @@ def ensure_output_dir() -> None:
 def set_journal_style() -> None:
     plt.rcParams.update({
         "font.size": 11,
-        "axes.titlesize": 13,
+        "axes.titlesize": 12,
         "axes.labelsize": 12,
         "xtick.labelsize": 10,
         "ytick.labelsize": 10,
         "legend.fontsize": 10,
-        "figure.titlesize": 14,
+        "figure.titlesize": 13,
         "axes.linewidth": 1.0,
         "lines.linewidth": 1.8,
         "savefig.dpi": 300,
     })
 
 
-def load_summary_data(csv_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_summary_data(csv_path: Path) -> pd.DataFrame:
     if not csv_path.exists():
         raise FileNotFoundError(f"Summary file not found: {csv_path}")
 
@@ -64,7 +65,7 @@ def load_summary_data(csv_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     required = {"dataset", "model", "seed", "test_accuracy", "epoch_time_min"}
     missing = required - set(df.columns)
     if missing:
-        raise ValueError(f"Missing columns in summary file: {sorted(missing)}")
+        raise ValueError(f"Missing columns in summary CSV: {sorted(missing)}")
 
     df = df[df["model"].isin(MODEL_ORDER)].copy()
 
@@ -86,28 +87,13 @@ def load_summary_data(csv_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     agg["model_order"] = agg["model"].map({m: i for i, m in enumerate(MODEL_ORDER)})
     agg = agg.sort_values(["dataset", "model_order"]).reset_index(drop=True)
 
-    df["model_label"] = df["model"].map(MODEL_LABELS)
-    df["dataset_label"] = df["dataset"].map(DATASET_LABELS)
-    df["model_order"] = df["model"].map({m: i for i, m in enumerate(MODEL_ORDER)})
-    df = df.sort_values(["dataset", "model_order", "seed"]).reset_index(drop=True)
-
-    return df, agg
+    return agg
 
 
 def _style_axis(ax: plt.Axes) -> None:
     ax.grid(axis="y", linestyle="--", alpha=0.35)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-
-
-def _save(fig: plt.Figure, filename_stem: str) -> None:
-    png = OUTPUT_DIR / f"{filename_stem}.png"
-    pdf = OUTPUT_DIR / f"{filename_stem}.pdf"
-    fig.savefig(png, bbox_inches="tight")
-    fig.savefig(pdf, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Saved: {png}")
-    print(f"Saved: {pdf}")
 
 
 def plot_model_performance_across_datasets(agg: pd.DataFrame) -> None:
@@ -130,6 +116,7 @@ def plot_model_performance_across_datasets(agg: pd.DataFrame) -> None:
         ax.set_xticks(x)
         ax.set_xticklabels(sub["model_label"], rotation=28, ha="right")
         ax.set_ylabel("Test Accuracy")
+        ax.set_xlabel(DATASET_LABELS[dataset])
         _style_axis(ax)
 
         ymin = max(0.0, sub["test_accuracy_mean"].min() - 0.05)
@@ -139,7 +126,10 @@ def plot_model_performance_across_datasets(agg: pd.DataFrame) -> None:
         for i, v in enumerate(sub["test_accuracy_mean"]):
             ax.text(i, v + 0.0025, f"{v:.3f}", ha="center", va="bottom", fontsize=9)
 
-    _save(fig, "Model_Performance_Across_Datasets")
+    out_base = OUTPUT_DIR / "Model Performance Across Datasets"
+    fig.savefig(out_base.with_suffix(".png"), bbox_inches="tight")
+    fig.savefig(out_base.with_suffix(".pdf"), bbox_inches="tight")
+    plt.close(fig)
 
 
 def plot_model_efficiency_across_datasets(agg: pd.DataFrame) -> None:
@@ -162,6 +152,7 @@ def plot_model_efficiency_across_datasets(agg: pd.DataFrame) -> None:
         ax.set_xticks(x)
         ax.set_xticklabels(sub["model_label"], rotation=28, ha="right")
         ax.set_ylabel("Training Time per Epoch (s)")
+        ax.set_xlabel(DATASET_LABELS[dataset])
         _style_axis(ax)
 
         ymax = sub["epoch_time_mean"].max() * 1.15
@@ -170,7 +161,10 @@ def plot_model_efficiency_across_datasets(agg: pd.DataFrame) -> None:
         for i, v in enumerate(sub["epoch_time_mean"]):
             ax.text(i, v + ymax * 0.012, f"{v:.2f}", ha="center", va="bottom", fontsize=9)
 
-    _save(fig, "Model_Efficiency_Across_Datasets")
+    out_base = OUTPUT_DIR / "Model Efficiency Across Datasets"
+    fig.savefig(out_base.with_suffix(".png"), bbox_inches="tight")
+    fig.savefig(out_base.with_suffix(".pdf"), bbox_inches="tight")
+    plt.close(fig)
 
 
 def plot_accuracy_efficiency_tradeoff(agg: pd.DataFrame) -> None:
@@ -200,13 +194,22 @@ def plot_accuracy_efficiency_tradeoff(agg: pd.DataFrame) -> None:
         ax.set_ylabel("Test Accuracy")
         _style_axis(ax)
 
+        ax.text(
+            0.5, 1.02, DATASET_LABELS[dataset],
+            transform=ax.transAxes,
+            ha="center", va="bottom", fontsize=11
+        )
+
         xmax = sub["epoch_time_mean"].max() * 1.15
         ymin = max(0.0, sub["test_accuracy_mean"].min() - 0.05)
         ymax = min(1.0, sub["test_accuracy_mean"].max() + 0.03)
         ax.set_xlim(0, xmax)
         ax.set_ylim(ymin, ymax)
 
-    _save(fig, "Accuracy_Efficiency_Tradeoff")
+    out_base = OUTPUT_DIR / "Accuracy Efficiency Trade-off"
+    fig.savefig(out_base.with_suffix(".png"), bbox_inches="tight")
+    fig.savefig(out_base.with_suffix(".pdf"), bbox_inches="tight")
+    plt.close(fig)
 
 
 def plot_hubnet_v2_vs_transformer_base(agg: pd.DataFrame) -> None:
@@ -286,264 +289,215 @@ def plot_hubnet_v2_vs_transformer_base(agg: pd.DataFrame) -> None:
     ax.set_ylabel("Training Time per Epoch (s)")
     _style_axis(ax)
 
-    _save(fig, "HubNet_v2_vs_Transformer_Base")
+    out_base = OUTPUT_DIR / "HubNet-v2 vs Transformer-Base"
+    fig.savefig(out_base.with_suffix(".png"), bbox_inches="tight")
+    fig.savefig(out_base.with_suffix(".pdf"), bbox_inches="tight")
+    plt.close(fig)
 
 
-def plot_final_accuracy_stability_boxplot(summary_df: pd.DataFrame) -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.8), constrained_layout=True)
-
-    for ax, dataset in zip(axes, ["imdb", "listops_synth"]):
-        sub = summary_df[summary_df["dataset"] == dataset].sort_values("model_order")
-
-        data = []
-        labels = []
-        for model in MODEL_ORDER:
-            vals = sub[sub["model"] == model]["test_accuracy"].tolist()
-            if vals:
-                data.append(vals)
-                labels.append(MODEL_LABELS[model])
-
-        bp = ax.boxplot(
-            data,
-            patch_artist=True,
-            widths=0.6,
-            showfliers=True,
-            medianprops={"linewidth": 1.5, "color": "black"},
-            boxprops={"linewidth": 1.0},
-            whiskerprops={"linewidth": 1.0},
-            capprops={"linewidth": 1.0},
-        )
-
-        for patch in bp["boxes"]:
-            patch.set_alpha(0.7)
-
-        ax.set_xticklabels(labels, rotation=28, ha="right")
-        ax.set_ylabel("Test Accuracy Across Seeds")
-        _style_axis(ax)
-
-    _save(fig, "Final_Accuracy_Stability_Boxplot")
+def _extract_seed_from_filename(name: str) -> Optional[int]:
+    m = re.search(r"_seed(\d+)", name)
+    return int(m.group(1)) if m else None
 
 
-def parse_filename_for_meta(name: str) -> Optional[dict]:
-    stem = name[:-5] if name.endswith(".json") else name
-    model = None
-
-    valid_models = [
-        "transformer_base",
-        "tiny_transformer",
-        "meanpool",
-        "bilstm",
-        "hubnet_v1",
-        "hubnet_v2",
-    ]
-
-    for candidate in valid_models:
-        prefix = candidate + "_"
-        if stem.startswith(prefix):
-            model = candidate
-            rest = stem[len(prefix):]
-            break
-    else:
-        return None
-
-    import re
-    m = re.match(r"(.+?)_seed(\d+)(.*)", rest)
-    if not m:
-        return None
-
-    dataset = m.group(1)
-    seed = int(m.group(2))
-    return {"dataset": dataset, "model": model, "seed": seed, "file": name}
-
-
-def _find_epoch_records(obj: Any) -> List[dict]:
-    found: List[dict] = []
+def _find_first_list_of_dicts_with_epoch_key(obj: Any) -> Optional[List[dict]]:
+    """
+    Try to find a history structure like:
+    [{"epoch": 1, "val_accuracy": ...}, ...]
+    """
+    if isinstance(obj, list):
+        if obj and all(isinstance(x, dict) for x in obj):
+            key_union = set()
+            for item in obj:
+                key_union.update(item.keys())
+            if "epoch" in key_union and (
+                "val_accuracy" in key_union or
+                "val_acc" in key_union or
+                "accuracy" in key_union
+            ):
+                return obj
+        for item in obj:
+            found = _find_first_list_of_dicts_with_epoch_key(item)
+            if found is not None:
+                return found
 
     if isinstance(obj, dict):
-        # common case: list under "history", "epochs", etc.
-        for key in ["history", "epoch_history", "epochs", "per_epoch", "train_history"]:
-            if key in obj and isinstance(obj[key], list):
-                for item in obj[key]:
-                    if isinstance(item, dict):
-                        found.append(item)
+        for value in obj.values():
+            found = _find_first_list_of_dicts_with_epoch_key(value)
+            if found is not None:
+                return found
 
-        for v in obj.values():
-            found.extend(_find_epoch_records(v))
-
-    elif isinstance(obj, list):
-        # direct list of dicts
-        if obj and all(isinstance(x, dict) for x in obj):
-            for item in obj:
-                found.append(item)
-        for item in obj:
-            found.extend(_find_epoch_records(item))
-
-    return found
-
-
-def _extract_metric_from_epoch_record(record: dict) -> Optional[float]:
-    candidate_keys = [
-        "val_accuracy",
-        "val_acc",
-        "best_val_acc",
-        "best_val_accuracy",
-        "accuracy",
-    ]
-    for key in candidate_keys:
-        val = record.get(key)
-        if isinstance(val, (int, float)):
-            return float(val)
     return None
 
 
-def _extract_epoch_index(record: dict, default_idx: int) -> int:
-    for key in ["epoch", "epoch_idx", "epoch_index"]:
-        val = record.get(key)
-        if isinstance(val, int):
-            return int(val)
-    return default_idx
+def _extract_epoch_accuracy_history(json_obj: dict) -> Optional[List[dict]]:
+    """
+    Returns a list like:
+    [{"epoch": 1, "accuracy": 0.61}, ...]
+    if found, otherwise None.
+    """
+    history = _find_first_list_of_dicts_with_epoch_key(json_obj)
+    if history is None:
+        return None
+
+    cleaned = []
+    for row in history:
+        epoch = row.get("epoch")
+        acc = None
+        for k in ["val_accuracy", "val_acc", "accuracy"]:
+            if k in row and isinstance(row[k], (int, float)):
+                acc = float(row[k])
+                break
+        if epoch is not None and acc is not None:
+            cleaned.append({"epoch": int(epoch), "accuracy": acc})
+
+    return cleaned if cleaned else None
 
 
-def build_epoch_accuracy_dataframe(results_dir: Path) -> pd.DataFrame:
+def build_epoch_accuracy_dataframe() -> pd.DataFrame:
+    """
+    Reads raw JSON result files and tries to build a per-epoch validation-accuracy table.
+    """
     rows = []
 
-    for path in sorted(results_dir.glob("*.json")):
-        meta = parse_filename_for_meta(path.name)
-        if meta is None:
+    if not RESULTS_DIR.exists():
+        return pd.DataFrame()
+
+    for path in RESULTS_DIR.glob("*.json"):
+        if path.name == "summary_final_models.csv":
             continue
 
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        records = _find_epoch_records(data)
-        if not records:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
             continue
 
-        seen = set()
-        for i, record in enumerate(records, start=1):
-            epoch_idx = _extract_epoch_index(record, i)
-            value = _extract_metric_from_epoch_record(record)
-            if value is None:
-                continue
+        history = _extract_epoch_accuracy_history(data)
+        if history is None:
+            continue
 
-            key = (meta["dataset"], meta["model"], meta["seed"], epoch_idx)
-            if key in seen:
-                continue
-            seen.add(key)
+        parts = path.stem
+        model = None
+        dataset = None
 
+        for candidate in MODEL_ORDER:
+            prefix = candidate + "_"
+            if parts.startswith(prefix):
+                model = candidate
+                rest = parts[len(prefix):]
+                m = re.match(r"(.+?)_seed(\d+)", rest)
+                if m:
+                    dataset = m.group(1)
+                break
+
+        seed = _extract_seed_from_filename(path.name)
+
+        if model is None or dataset is None or seed is None:
+            continue
+
+        for item in history:
             rows.append({
-                "dataset": meta["dataset"],
-                "model": meta["model"],
-                "seed": meta["seed"],
-                "epoch": epoch_idx,
-                "val_accuracy": value,
+                "dataset": dataset,
+                "model": model,
+                "seed": seed,
+                "epoch": item["epoch"],
+                "accuracy": item["accuracy"],
             })
 
-    if not rows:
-        return pd.DataFrame(columns=["dataset", "model", "seed", "epoch", "val_accuracy"])
-
-    df = pd.DataFrame(rows)
-    df = df[df["model"].isin(MODEL_ORDER)].copy()
-    return df.sort_values(["dataset", "model", "seed", "epoch"]).reset_index(drop=True)
+    return pd.DataFrame(rows)
 
 
-def plot_epoch_accuracy_stability_boxplot(epoch_df: pd.DataFrame) -> None:
+def plot_epoch_accuracy_stability_boxplot() -> None:
+    epoch_df = build_epoch_accuracy_dataframe()
+
     if epoch_df.empty:
-        print("No epoch-level accuracy records found in results JSON files. Skipping epoch stability boxplot.")
+        print("No per-epoch accuracy history found in raw JSON files. Skipping boxplot.")
         return
 
-    # one figure per dataset to avoid clutter
-    for dataset in ["imdb", "listops_synth"]:
-        sub_ds = epoch_df[epoch_df["dataset"] == dataset].copy()
-        if sub_ds.empty:
+    epoch_df = epoch_df[epoch_df["model"].isin(MODEL_ORDER)].copy()
+
+    datasets = sorted(epoch_df["dataset"].unique())
+    if not datasets:
+        print("No datasets found for epoch boxplot. Skipping.")
+        return
+
+    fig, axes = plt.subplots(1, len(datasets), figsize=(6.5 * len(datasets), 5), constrained_layout=True)
+
+    if len(datasets) == 1:
+        axes = [axes]
+
+    for ax, dataset in zip(axes, datasets):
+        sub = epoch_df[epoch_df["dataset"] == dataset].copy()
+        if sub.empty:
             continue
 
-        # label format: Model E1, Model E2, ...
+        epochs = sorted(sub["epoch"].unique())
+        models = [m for m in MODEL_ORDER if m in sub["model"].unique()]
+
+        positions = []
+        box_data = []
         labels = []
-        data = []
+        pos = 1
 
-        for model in MODEL_ORDER:
-            sub_model = sub_ds[sub_ds["model"] == model]
-            if sub_model.empty:
-                continue
-
-            epochs = sorted(sub_model["epoch"].unique())
-            for ep in epochs:
-                vals = sub_model[sub_model["epoch"] == ep]["val_accuracy"].tolist()
+        for epoch in epochs:
+            for model in models:
+                vals = sub[(sub["epoch"] == epoch) & (sub["model"] == model)]["accuracy"].tolist()
                 if vals:
-                    labels.append(f"{MODEL_LABELS[model]}\nE{ep}")
-                    data.append(vals)
+                    positions.append(pos)
+                    box_data.append(vals)
+                    labels.append(MODEL_LABELS[model])
+                pos += 1
+            pos += 1
 
-        if not data:
-            continue
-
-        fig, ax = plt.subplots(figsize=(max(13, len(labels) * 0.6), 5.2), constrained_layout=True)
-
-        bp = ax.boxplot(
-            data,
-            patch_artist=True,
-            widths=0.55,
+        ax.boxplot(
+            box_data,
+            positions=positions,
+            widths=0.7,
+            patch_artist=False,
             showfliers=True,
-            medianprops={"linewidth": 1.5, "color": "black"},
-            boxprops={"linewidth": 1.0},
-            whiskerprops={"linewidth": 1.0},
-            capprops={"linewidth": 1.0},
         )
 
-        for patch in bp["boxes"]:
-            patch.set_alpha(0.7)
+        tick_positions = []
+        tick_labels = []
+        pos = 1
+        for epoch in epochs:
+            start = pos
+            end = pos + len(models) - 1
+            tick_positions.append((start + end) / 2)
+            tick_labels.append(f"Epoch {epoch}")
+            pos = end + 2
 
-        ax.set_xticklabels(labels, rotation=45, ha="right")
+        ax.set_xticks(tick_positions)
+        ax.set_xticklabels(tick_labels)
         ax.set_ylabel("Validation Accuracy Across Seeds")
+        ax.set_xlabel(DATASET_LABELS.get(dataset, dataset))
         _style_axis(ax)
 
-        filename = f"Epoch_Accuracy_Stability_Boxplot_{DATASET_LABELS[dataset]}"
-        _save(fig, filename.replace(" ", "_"))
-
-
-def save_paper_table_csv(agg: pd.DataFrame) -> None:
-    rows = []
-    for dataset in ["imdb", "listops_synth"]:
-        sub = agg[agg["dataset"] == dataset].sort_values("model_order").copy()
-
-        transformer_time = float(
-            sub.loc[sub["model"] == "transformer_base", "epoch_time_mean"].iloc[0]
+        ax.text(
+            0.5, 1.02, DATASET_LABELS.get(dataset, dataset),
+            transform=ax.transAxes,
+            ha="center", va="bottom", fontsize=11
         )
 
-        for _, row in sub.iterrows():
-            speedup = transformer_time / row["epoch_time_mean"]
-            rows.append({
-                "dataset": DATASET_LABELS[dataset],
-                "model": row["model_label"],
-                "accuracy_mean": round(row["test_accuracy_mean"], 4),
-                "accuracy_std": round(row["test_accuracy_std"], 4),
-                "epoch_time_mean_s": round(row["epoch_time_mean"], 4),
-                "epoch_time_std_s": round(row["epoch_time_std"], 4),
-                "relative_speed_vs_transformer": round(speedup, 2),
-            })
-
-    out_path = OUTPUT_DIR / "Paper_Main_Results_Table.csv"
-    pd.DataFrame(rows).to_csv(out_path, index=False)
-    print(f"Saved: {out_path}")
+    out_base = OUTPUT_DIR / "Epoch-wise Accuracy Stability Across Seeds"
+    fig.savefig(out_base.with_suffix(".png"), bbox_inches="tight")
+    fig.savefig(out_base.with_suffix(".pdf"), bbox_inches="tight")
+    plt.close(fig)
 
 
 def main() -> None:
     ensure_output_dir()
     set_journal_style()
-
-    summary_df, agg = load_summary_data(RESULTS_CSV)
-    save_paper_table_csv(agg)
+    agg = load_summary_data(RESULTS_CSV)
 
     plot_model_performance_across_datasets(agg)
     plot_model_efficiency_across_datasets(agg)
     plot_accuracy_efficiency_tradeoff(agg)
     plot_hubnet_v2_vs_transformer_base(agg)
-    plot_final_accuracy_stability_boxplot(summary_df)
+    plot_epoch_accuracy_stability_boxplot()
 
-    epoch_df = build_epoch_accuracy_dataframe(RESULTS_JSON_DIR)
-    plot_epoch_accuracy_stability_boxplot(epoch_df)
-
-    print(f"\nSaved all figures to: {OUTPUT_DIR}")
+    print("\nSaved all journal-style figures to:", OUTPUT_DIR)
 
 
 if __name__ == "__main__":
