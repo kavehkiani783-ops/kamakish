@@ -54,39 +54,6 @@ def clear_directory_contents(path: Path) -> None:
             item.unlink(missing_ok=True)
 
 
-def expected_main_result_path(
-    model: str,
-    dataset: str,
-    seed: int,
-    results_dir: Path,
-    steps: Optional[int] = None,
-    slots: Optional[int] = None,
-    topk: Optional[int] = None,
-    gate: Optional[bool] = None,
-) -> Path:
-    """
-    Match the current main.py filename logic.
-
-    Non-HubNet models:
-      {model}_{dataset}_seed{seed}.json
-
-    HubNet models:
-      {model}_{dataset}_seed{seed}_steps{steps}_slots{slots}_topk{topk}_gate{int(gate)}.json
-    """
-    if model in {"hubnet_v1", "hubnet_v2"}:
-        if steps is None or slots is None or topk is None or gate is None:
-            raise ValueError(
-                "For hubnet_v1 / hubnet_v2, expected_main_result_path requires "
-                "steps, slots, topk, and gate."
-            )
-        return results_dir / (
-            f"{model}_{dataset}_seed{seed}"
-            f"_steps{steps}_slots{slots}_topk{topk}_gate{int(gate)}.json"
-        )
-
-    return results_dir / f"{model}_{dataset}_seed{seed}.json"
-
-
 def normalise_key(key: Any) -> str:
     if key is None:
         return ""
@@ -281,6 +248,13 @@ def write_csv(path: Path, rows: List[Dict[str, Any]]) -> None:
 
 
 def build_summary_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Aggregate across seeds.
+
+    Grouping:
+      - models run: dataset + model
+      - ablation run: dataset + model + ablation_name + ablation_value
+    """
     grouped: Dict[str, List[Dict[str, Any]]] = {}
 
     for row in rows:
