@@ -19,14 +19,11 @@ from experiment_common import (
 
 # ============================================================
 # CENTRAL ABLATION CONFIG
-# Everything important is defined here in code.
-# No manual dataset/value selection from terminal.
 # ============================================================
 
 ABLATION_DATASETS = ["imdb", "listops_synth"]
 ABLATION_SEEDS = [42, 43, 44]
 
-# Shared defaults per dataset
 DATASET_CONFIGS = {
     "imdb": {
         "epochs": 3,
@@ -44,28 +41,27 @@ DATASET_CONFIGS = {
     },
 }
 
-# Default HUBNET config used as the base before sweeping one parameter
+# Base config aligned with final HubNet-v2 main comparison
 HUBNET_BASE_CONFIG = {
-    "HubNet_steps": 2,
-    "HubNet_slots": 16,
+    "HubNet_steps": 4,
+    "HubNet_slots": 32,
     "HubNet_decay": 0.9,
     "HubNet_topk": 0,
     "HubNet_dropout": 0.1,
     "HubNet_score_clip": 20.0,
-    "HubNet_gate": False,
+    "HubNet_gate": True,
 }
 
-# Sweep values are defined here in code
 ABLATION_SWEEPS = {
     "steps": [0, 1, 2, 4, 8],
-    "slots": [16, 32, 64, 128, 256],
+    "slots": [16, 32, 64, 128],
     "topk": [0, 2, 4, 8, 16],
 }
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run HUBNET ablation sweeps across both datasets and store everything in one folder."
+        description="Run HubNet-v2 ablation sweeps across both datasets."
     )
     parser.add_argument("--python_exec", type=str, default=sys.executable, help="Python executable to use")
     parser.add_argument("--main_py", type=str, default="main.py", help="Path to main.py")
@@ -73,10 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--results_dir", type=str, default="results", help="Temporary results directory used by main.py")
     parser.add_argument("--clean_results_dir", action="store_true", help="Clear temporary results dir before starting")
     parser.add_argument("--tag", type=str, default="", help="Optional suffix for run folder name")
-
-    # Only ablation type is selected manually
     parser.add_argument("--ablation", type=str, required=True, choices=["steps", "slots", "topk"])
-
     return parser
 
 
@@ -96,7 +89,7 @@ def build_jobs(args: argparse.Namespace) -> List[Dict[str, Any]]:
             for seed in ABLATION_SEEDS:
                 cmd = [
                     "--dataset", dataset,
-                    "--model", "HubNet_v2",
+                    "--model", "hubnet_v2",
                     "--epochs", str(dataset_cfg["epochs"]),
                     "--seed", str(seed),
                     "--batch_size", str(dataset_cfg["batch_size"]),
@@ -126,7 +119,7 @@ def build_jobs(args: argparse.Namespace) -> List[Dict[str, Any]]:
                 jobs.append(
                     {
                         "dataset": dataset,
-                        "model": "HubNet_v2",
+                        "model": "hubnet_v2",
                         "seed": seed,
                         "ablation_name": args.ablation,
                         "ablation_value": ablation_value,
@@ -163,10 +156,10 @@ def main() -> None:
     saved_run_paths: List[Path] = []
 
     print(f"Run directory: {run_dir}")
-    print(f"Datasets (from code): {ABLATION_DATASETS}")
+    print(f"Datasets: {ABLATION_DATASETS}")
     print(f"Ablation type: {args.ablation}")
-    print(f"Sweep values (from code): {ABLATION_SWEEPS[args.ablation]}")
-    print(f"Seeds (from code): {ABLATION_SEEDS}")
+    print(f"Sweep values: {ABLATION_SWEEPS[args.ablation]}")
+    print(f"Seeds: {ABLATION_SEEDS}")
     print(f"Total runs: {len(jobs)}")
     print("-" * 80)
 
@@ -189,11 +182,11 @@ def main() -> None:
         start = time.perf_counter()
         completed = subprocess.run(command, text=True)
         wall_time_min = (time.perf_counter() - start) / 60.0
-        
+
         stdout = ""
         stderr = ""
 
-        out_name = f"HubNet_{dataset}_{ablation_name}{ablation_value}_seed{seed}.json"
+        out_name = f"hubnet_v2_{dataset}_{ablation_name}{ablation_value}_seed{seed}.json"
         out_path = runs_dir / out_name
 
         if completed.returncode != 0:
@@ -215,7 +208,6 @@ def main() -> None:
             }
             write_json(out_path, payload)
             saved_run_paths.append(out_path)
-
             print(f"  FAILED (return code {completed.returncode})")
             print("-" * 80)
             continue
@@ -239,7 +231,6 @@ def main() -> None:
             }
             write_json(out_path, payload)
             saved_run_paths.append(out_path)
-
             print("  FAILED (main.py finished but result JSON not found)")
             print("-" * 80)
             continue
@@ -271,7 +262,6 @@ def main() -> None:
         print("-" * 80)
 
     summarise_runs(saved_run_paths, run_dir)
-
     remove_dir_if_empty(results_dir)
 
     print("Finished.")
