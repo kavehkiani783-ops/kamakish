@@ -3,9 +3,8 @@ import shlex
 import subprocess
 import sys
 import time
-import shutil
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Set
 
 from experiment_common import (
     clear_directory_contents,
@@ -63,13 +62,47 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run HubNet-v2 ablation sweeps across both datasets."
     )
-    parser.add_argument("--python_exec", type=str, default=sys.executable, help="Python executable to use")
-    parser.add_argument("--main_py", type=str, default="main.py", help="Path to main.py")
-    parser.add_argument("--root_dir", type=str, default="ablation_runs", help="Root directory for ablation runs")
-    parser.add_argument("--results_dir", type=str, default="results", help="Temporary results directory used by main.py")
-    parser.add_argument("--clean_results_dir", action="store_true", help="Clear temporary results dir before starting")
-    parser.add_argument("--tag", type=str, default="", help="Optional suffix for run folder name")
-    parser.add_argument("--ablation", type=str, required=True, choices=["steps", "slots", "topk"])
+    parser.add_argument(
+        "--python_exec",
+        type=str,
+        default=sys.executable,
+        help="Python executable to use",
+    )
+    parser.add_argument(
+        "--main_py",
+        type=str,
+        default="main.py",
+        help="Path to main.py",
+    )
+    parser.add_argument(
+        "--root_dir",
+        type=str,
+        default="ablation_runs",
+        help="Root directory for ablation runs",
+    )
+    parser.add_argument(
+        "--results_dir",
+        type=str,
+        default="results",
+        help="Temporary results directory used by main.py",
+    )
+    parser.add_argument(
+        "--clean_results_dir",
+        action="store_true",
+        help="Clear temporary results dir before starting",
+    )
+    parser.add_argument(
+        "--tag",
+        type=str,
+        default="",
+        help="Optional suffix for run folder name",
+    )
+    parser.add_argument(
+        "--ablation",
+        type=str,
+        required=True,
+        choices=["steps", "slots", "topk"],
+    )
     return parser
 
 
@@ -130,20 +163,19 @@ def build_jobs(args: argparse.Namespace) -> List[Dict[str, Any]]:
     return jobs
 
 
-def list_json_files(results_dir: Path) -> set[Path]:
+def list_json_files(results_dir: Path) -> Set[Path]:
     return set(results_dir.glob("*.json"))
 
 
 def find_new_result_json(
     results_dir: Path,
-    before_files: set[Path],
+    before_files: Set[Path],
     dataset: str,
     seed: int,
 ) -> Optional[Path]:
     """
     Find the newest JSON created by main.py for this run.
-    We avoid guessing the exact filename because main.py encodes
-    steps/slots/topk/gate in the HubNet filename.
+    This works with filenames that include steps/slots/topk/gate.
     """
     after_files = set(results_dir.glob("*.json"))
     new_files = list(after_files - before_files)
@@ -151,15 +183,12 @@ def find_new_result_json(
     if not new_files:
         return None
 
-    # Prefer files matching dataset and seed in the filename
     seed_token = f"seed{seed}"
     preferred = [
         p for p in new_files
         if dataset in p.name and seed_token in p.name
     ]
     candidates = preferred if preferred else new_files
-
-    # Return newest by modification time
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates[0]
 
@@ -296,7 +325,6 @@ def main() -> None:
         write_json(out_path, payload)
         saved_run_paths.append(out_path)
 
-        # Optional: keep results dir tidy so each run starts clean
         actual_result.unlink(missing_ok=True)
 
         print(f"  OK | wall_time={wall_time_min:.3f} min | saved={out_path.name}")
