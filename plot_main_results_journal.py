@@ -155,7 +155,7 @@ def plot_model_efficiency_across_datasets(agg: pd.DataFrame) -> None:
 
         ax.set_xticks(x)
         ax.set_xticklabels(sub["model_label"], rotation=28, ha="right")
-        ax.set_ylabel("Training Time per Epoch (s)")
+        ax.set_ylabel("Training Time per Epoch (min)")
         ax.set_xlabel(DATASET_LABELS[dataset])
         _style_axis(ax)
 
@@ -191,7 +191,7 @@ def plot_accuracy_efficiency_tradeoff(agg: pd.DataFrame) -> None:
                 fontsize=9,
             )
 
-        ax.set_xlabel("Training Time per Epoch (s)")
+        ax.set_xlabel("Training Time per Epoch (min)")
         ax.set_ylabel("Test Accuracy")
         _style_axis(ax)
 
@@ -284,7 +284,7 @@ def plot_hubnet_v2_vs_transformer_base(agg: pd.DataFrame) -> None:
     )
     ax.set_xticks(x)
     ax.set_xticklabels([DATASET_LABELS[d] for d in datasets])
-    ax.set_ylabel("Training Time per Epoch (s)")
+    ax.set_ylabel("Training Time per Epoch (min)")
     _style_axis(ax)
 
     _save_figure(fig, "HubNet-v2 vs Transformer-Base")
