@@ -3,13 +3,13 @@ import shlex
 import subprocess
 import sys
 import time
+import shutil
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 from experiment_common import (
     clear_directory_contents,
     ensure_dir,
-    expected_main_result_path,
     read_json,
     remove_dir_if_empty,
     summarise_runs,
@@ -130,6 +130,40 @@ def build_jobs(args: argparse.Namespace) -> List[Dict[str, Any]]:
     return jobs
 
 
+def list_json_files(results_dir: Path) -> set[Path]:
+    return set(results_dir.glob("*.json"))
+
+
+def find_new_result_json(
+    results_dir: Path,
+    before_files: set[Path],
+    dataset: str,
+    seed: int,
+) -> Optional[Path]:
+    """
+    Find the newest JSON created by main.py for this run.
+    We avoid guessing the exact filename because main.py encodes
+    steps/slots/topk/gate in the HubNet filename.
+    """
+    after_files = set(results_dir.glob("*.json"))
+    new_files = list(after_files - before_files)
+
+    if not new_files:
+        return None
+
+    # Prefer files matching dataset and seed in the filename
+    seed_token = f"seed{seed}"
+    preferred = [
+        p for p in new_files
+        if dataset in p.name and seed_token in p.name
+    ]
+    candidates = preferred if preferred else new_files
+
+    # Return newest by modification time
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -173,18 +207,16 @@ def main() -> None:
         command = [args.python_exec, args.main_py] + job["args"]
         command_str = " ".join(shlex.quote(part) for part in command)
 
-        expected_result = expected_main_result_path(model, dataset, seed, results_dir)
-        if expected_result.exists():
-            expected_result.unlink()
+        before_files = list_json_files(results_dir)
 
         print(f"[{idx}/{len(jobs)}] Running: {command_str}")
 
         start = time.perf_counter()
-        completed = subprocess.run(command, text=True)
+        completed = subprocess.run(command, capture_output=True, text=True)
         wall_time_min = (time.perf_counter() - start) / 60.0
 
-        stdout = ""
-        stderr = ""
+        stdout = completed.stdout or ""
+        stderr = completed.stderr or ""
 
         out_name = f"hubnet_v2_{dataset}_{ablation_name}{ablation_value}_seed{seed}.json"
         out_path = runs_dir / out_name
@@ -212,7 +244,14 @@ def main() -> None:
             print("-" * 80)
             continue
 
-        if not expected_result.exists():
+        actual_result = find_new_result_json(
+            results_dir=results_dir,
+            before_files=before_files,
+            dataset=dataset,
+            seed=seed,
+        )
+
+        if actual_result is None or not actual_result.exists():
             payload = {
                 "experiment_type": "ablation",
                 "run_id": run_id,
@@ -235,7 +274,7 @@ def main() -> None:
             print("-" * 80)
             continue
 
-        result_metrics = read_json(expected_result)
+        result_metrics = read_json(actual_result)
 
         payload = {
             "experiment_type": "ablation",
@@ -250,13 +289,15 @@ def main() -> None:
             "returncode": completed.returncode,
             "stdout": stdout,
             "stderr": stderr,
+            "source_result_file": str(actual_result),
             "metrics": result_metrics,
             "status": "ok",
         }
         write_json(out_path, payload)
         saved_run_paths.append(out_path)
 
-        expected_result.unlink(missing_ok=True)
+        # Optional: keep results dir tidy so each run starts clean
+        actual_result.unlink(missing_ok=True)
 
         print(f"  OK | wall_time={wall_time_min:.3f} min | saved={out_path.name}")
         print("-" * 80)
