@@ -6,8 +6,8 @@ import csv
 from collections import defaultdict
 from statistics import mean, stdev
 
-RESULTS_DIR = "results"
-PATTERN = os.path.join(RESULTS_DIR, "*.json")
+ABLATION_ROOT = "ablation_runs"
+PATTERN = os.path.join(ABLATION_ROOT, "**", "*.json")
 
 ABLATION_MODELS = {"hubnet_v1", "hubnet_v2"}
 
@@ -77,6 +77,22 @@ def find_first_key(obj, target_keys):
     return None
 
 
+def is_real_result_json(data):
+    if not isinstance(data, dict):
+        return False
+
+    if data.get("status") == "failed_missing_result_json":
+        return False
+
+    if find_first_key(data, {"val_accuracy", "best_val_acc", "best_val_accuracy", "val_acc"}) is not None:
+        return True
+
+    if find_first_key(data, {"test_accuracy", "test_acc", "accuracy"}) is not None:
+        return True
+
+    return False
+
+
 def fmt(x):
     return f"{x:.4f}" if isinstance(x, (int, float)) else "NA"
 
@@ -88,13 +104,13 @@ def safe_mean(xs):
 
 def safe_std(xs):
     xs = [x for x in xs if x is not None]
-    return stdev(xs) if len(xs) > 1 else 0.0 if len(xs) == 1 else None
+    return stdev(xs) if len(xs) > 1 else (0.0 if len(xs) == 1 else None)
 
 
 def load_rows():
     rows = []
 
-    for path in sorted(glob.glob(PATTERN)):
+    for path in sorted(glob.glob(PATTERN, recursive=True)):
         name = os.path.basename(path)
         meta = parse_filename(name)
         if meta is None:
@@ -104,10 +120,12 @@ def load_rows():
             continue
 
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            try:
+                data = json.load(f)
+            except json.JSONDecodeError:
+                continue
 
-        # Skip broken metadata logs from the ablation runner
-        if isinstance(data, dict) and data.get("status") == "failed_missing_result_json":
+        if not is_real_result_json(data):
             continue
 
         val_acc = find_first_key(data, {"val_accuracy", "best_val_acc", "best_val_accuracy", "val_acc"})
@@ -117,6 +135,7 @@ def load_rows():
 
         rows.append({
             **meta,
+            "source_path": path,
             "val_accuracy": val_acc,
             "test_accuracy": test_acc,
             "epoch_time": epoch_time,
@@ -127,9 +146,9 @@ def load_rows():
 
 
 def save_all_runs(rows):
-    out_csv = os.path.join(RESULTS_DIR, "ablation_all_runs_clean.csv")
+    out_csv = os.path.join(ABLATION_ROOT, "ablation_all_runs_clean.csv")
     fieldnames = [
-        "file", "dataset", "model", "seed",
+        "file", "source_path", "dataset", "model", "seed",
         "steps", "slots", "topk", "gate",
         "val_accuracy", "test_accuracy", "epoch_time", "num_parameters"
     ]
@@ -148,7 +167,7 @@ def summarise_ablation(rows, ablation_name, fixed_filters):
             if r.get(k) != v:
                 ok = False
                 break
-        if ok:
+        if ok and r.get(ablation_name) is not None:
             filtered.append(r)
 
     grouped = defaultdict(list)
@@ -171,7 +190,7 @@ def summarise_ablation(rows, ablation_name, fixed_filters):
             "mean_num_parameters": safe_mean([x["num_parameters"] for x in grp]),
         })
 
-    out_csv = os.path.join(RESULTS_DIR, f"ablation_{ablation_name}_summary.csv")
+    out_csv = os.path.join(ABLATION_ROOT, f"ablation_{ablation_name}_summary.csv")
     fieldnames = list(out_rows[0].keys()) if out_rows else [
         "dataset", "model", ablation_name, "n_runs",
         "mean_val_accuracy", "std_val_accuracy",
@@ -188,6 +207,10 @@ def summarise_ablation(rows, ablation_name, fixed_filters):
     print(f"Saved {ablation_name} summary to: {out_csv}")
 
     print(f"\n{ablation_name.upper()} ABLATION")
+    if not out_rows:
+        print("No matching runs found.")
+        return
+
     for row in out_rows:
         print(
             f"dataset={row['dataset']} | model={row['model']} | {ablation_name}={row[ablation_name]} | "
