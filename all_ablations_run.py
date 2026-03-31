@@ -180,7 +180,21 @@ def main() -> None:
         command = [args.python_exec, args.main_py] + job["args"]
         command_str = " ".join(shlex.quote(part) for part in command)
 
-        expected_result = expected_main_result_path(model, dataset, seed, results_dir)
+        steps = int(next(job["args"][i + 1] for i, x in enumerate(job["args"]) if x == "--HubNet_steps"))
+        slots = int(next(job["args"][i + 1] for i, x in enumerate(job["args"]) if x == "--HubNet_slots"))
+        topk = int(next(job["args"][i + 1] for i, x in enumerate(job["args"]) if x == "--HubNet_topk"))
+        gate = "--HubNet_gate" in job["args"]
+        
+        expected_result = expected_main_result_path(
+            model=model,
+            dataset=dataset,
+            seed=seed,
+            results_dir=results_dir,
+            steps=steps,
+            slots=slots,
+            topk=topk,
+            gate=gate,
+        )
         if expected_result.exists():
             expected_result.unlink()
 
